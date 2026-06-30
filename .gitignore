@@ -1,3 +1,7 @@
+# node deps & build output (package-lock.json IS committed)
+node_modules/
+dist/
+
 # downloaded packages / build artifacts
 *.deb
 *.tmp

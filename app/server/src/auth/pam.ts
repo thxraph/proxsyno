@@ -6,6 +6,7 @@
  * a clean ApiError instead of crashing the server at import time.
  */
 import os from "node:os";
+import { createRequire } from "node:module";
 import { config } from "../config.js";
 import { ApiError } from "../util/errors.js";
 import { run } from "../util/exec.js";
@@ -18,17 +19,19 @@ type PamAuthenticate = (
   options?: { serviceName?: string; remoteHost?: string },
 ) => void;
 
+// Native .node addons cannot be loaded by the ESM loader (`import()` throws
+// "Unknown file extension .node"), so we go through a CJS require created from
+// this module's URL. require() is synchronous and caches, hence no async here.
+const requireCjs = createRequire(import.meta.url);
+
 let pamAuthenticate: PamAuthenticate | null = null;
 
-async function getPam(): Promise<PamAuthenticate> {
+function getPam(): PamAuthenticate {
   if (pamAuthenticate) return pamAuthenticate;
   try {
-    const mod = (await import("authenticate-pam")) as unknown as
-      | { authenticate: PamAuthenticate }
-      | { default: { authenticate: PamAuthenticate } };
-    const auth = "authenticate" in mod ? mod.authenticate : mod.default.authenticate;
-    pamAuthenticate = auth;
-    return auth;
+    const mod = requireCjs("authenticate-pam") as { authenticate: PamAuthenticate };
+    pamAuthenticate = mod.authenticate;
+    return pamAuthenticate;
   } catch (err) {
     throw ApiError.internal(
       "PAM module unavailable (is authenticate-pam built and libpam installed?)",
@@ -39,7 +42,7 @@ async function getPam(): Promise<PamAuthenticate> {
 
 /** Verify a username/password pair against the host PAM stack. */
 export async function pamLogin(username: string, password: string): Promise<boolean> {
-  const authenticate = await getPam();
+  const authenticate = getPam();
   return new Promise<boolean>((resolve) => {
     authenticate(
       username,

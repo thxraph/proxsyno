@@ -50,7 +50,7 @@ authRouter.post(
 );
 
 // POST /api/auth/logout
-authRouter.post("/logout", (req, res) => {
+authRouter.post("/logout", (_req, res) => {
   // clearCookie must use matching attributes to actually remove it.
   const opts = cookieOptions();
   res.clearCookie(config.cookieName, { httpOnly: opts.httpOnly, sameSite: opts.sameSite, secure: opts.secure, path: opts.path });
