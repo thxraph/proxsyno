@@ -21,5 +21,7 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
+    // noVNC's entrypoint uses top-level await; es2022 is the floor that allows it.
+    target: 'es2022',
   },
 });

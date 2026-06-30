@@ -29,6 +29,12 @@ import {
   SCRIPT_SLUG_REGEX,
   type ConsolePty,
 } from "./services/proxmox.js";
+import {
+  bridgeToVnc,
+  createVncProxy,
+  parseConsoleParams,
+  type VncProxy,
+} from "./services/pveconsole.js";
 import { errorHandler, notFoundHandler } from "./util/errors.js";
 
 // ---------------------------------------------------------------------------
@@ -97,6 +103,8 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 // Second endpoint: the interactive Proxmox community-script console PTY.
 const consoleWss = new WebSocketServer({ noServer: true });
+// Third endpoint: the per-guest VNC console (qemu/lxc) bridged to noVNC.
+const pveConsoleWss = new WebSocketServer({ noServer: true });
 
 // --- WebSocket heartbeat ---------------------------------------------------
 // Half-open TCP connections (client crash, NAT timeout) never fire 'close', so
@@ -127,6 +135,7 @@ function setupHeartbeat(server: WebSocketServer): void {
 }
 setupHeartbeat(wss);
 setupHeartbeat(consoleWss);
+setupHeartbeat(pveConsoleWss);
 
 function parseCookieHeader(header: string | undefined): Record<string, string> {
   const out: Record<string, string> = {};
@@ -146,7 +155,8 @@ server.on("upgrade", (req, socket, head) => {
   const pathname = (req.url ?? "").split("?")[0];
   const isSystem = pathname === "/ws/system";
   const isConsole = pathname === "/ws/proxmox/console";
-  if (!isSystem && !isConsole) {
+  const isPveConsole = pathname === "/ws/pve/console";
+  if (!isSystem && !isConsole && !isPveConsole) {
     socket.destroy();
     return;
   }
@@ -161,7 +171,7 @@ server.on("upgrade", (req, socket, head) => {
     return;
   }
 
-  const target = isConsole ? consoleWss : wss;
+  const target = isPveConsole ? pveConsoleWss : isConsole ? consoleWss : wss;
   target.handleUpgrade(req, socket, head, (ws) => {
     target.emit("connection", ws, req);
   });
@@ -282,6 +292,49 @@ consoleWss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
 });
 
 // ---------------------------------------------------------------------------
+// Proxmox guest VNC console — ticket control frame, then a raw binary RFB pipe.
+// ---------------------------------------------------------------------------
+
+pveConsoleWss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
+  markAlive(ws);
+  void (async () => {
+    const url = new URL(req.url ?? "", "http://localhost");
+    const params = parseConsoleParams(url.searchParams);
+    if (!params) {
+      sendJson(ws, { type: "error", message: "Invalid console parameters" });
+      ws.close();
+      return;
+    }
+
+    let proxy: VncProxy;
+    try {
+      proxy = await createVncProxy(params);
+    } catch (err) {
+      sendJson(ws, {
+        type: "error",
+        message: `Failed to open VNC proxy: ${err instanceof Error ? err.message : String(err)}`,
+      });
+      ws.close();
+      return;
+    }
+
+    // Client may have gone away while pvesh was running.
+    if (ws.readyState !== ws.OPEN) return;
+
+    // 1) one JSON text control frame carrying the VNC password, then
+    // 2) hand the socket to the raw binary bridge for noVNC.
+    ws.send(JSON.stringify({ type: "vnc-ticket", ticket: proxy.ticket }));
+    bridgeToVnc(ws, proxy);
+  })().catch((err) => {
+    sendJson(ws, {
+      type: "error",
+      message: `Console error: ${err instanceof Error ? err.message : String(err)}`,
+    });
+    ws.close();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
 
@@ -300,6 +353,7 @@ for (const sig of ["SIGTERM", "SIGINT"] as const) {
     console.log(`[proxsyno] ${sig} received, shutting down`);
     wss.clients.forEach((c) => c.close());
     consoleWss.clients.forEach((c) => c.close());
+    pveConsoleWss.clients.forEach((c) => c.close());
     server.close(() => process.exit(0));
     // Force-exit if connections linger.
     setTimeout(() => process.exit(0), 5000).unref();

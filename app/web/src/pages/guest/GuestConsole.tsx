@@ -1,0 +1,206 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Keyboard, MonitorPlay, RefreshCw } from 'lucide-react';
+import RFB from '@novnc/novnc';
+import type { Guest } from '../../lib/types';
+import { Badge } from '../../components/Badge';
+import { cx } from '../../lib/format';
+
+type Status = 'connecting' | 'connected' | 'disconnected' | 'error';
+
+interface TicketFrame {
+  type?: string;
+  ticket?: string;
+  message?: string;
+}
+
+function wsUrl(path: string): string {
+  const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${proto}://${window.location.host}${path}`;
+}
+
+// In-browser VNC console for a Proxmox guest (qemu VM or LXC).
+//
+// Protocol: open /ws/pve/console?node=&type=&vmid=. The backend sends ONE JSON
+// text control frame { type:"vnc-ticket", ticket } and then switches the socket
+// to a raw binary RFB pipe. We read that first frame, then hand the still-open
+// socket to noVNC's RFB with the ticket as the VNC password — so RFB owns the
+// socket from the very first VNC byte (no race with a separate REST call).
+export function GuestConsole({ guest }: { guest: Guest }) {
+  const screenRef = useRef<HTMLDivElement | null>(null);
+  const rfbRef = useRef<RFB | null>(null);
+  const [status, setStatus] = useState<Status>('connecting');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // Bumping this re-runs the connect effect (Reconnect button).
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    const el = screenRef.current;
+    if (!el) return;
+    // Clear any canvas a previous RFB instance left behind.
+    el.innerHTML = '';
+    setStatus('connecting');
+    setErrorMsg(null);
+
+    let disposed = false;
+    let rfb: RFB | null = null;
+
+    const path =
+      `/ws/pve/console?node=${encodeURIComponent(guest.node)}` +
+      `&type=${guest.type}&vmid=${guest.vmid}`;
+
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(wsUrl(path));
+    } catch {
+      setStatus('error');
+      setErrorMsg('Failed to open console socket');
+      return;
+    }
+    ws.binaryType = 'arraybuffer';
+
+    const onFirstMessage = (ev: MessageEvent) => {
+      if (disposed) return;
+      // The handshake frame is text; once consumed we step aside and let RFB
+      // take over the socket's onmessage.
+      ws.removeEventListener('message', onFirstMessage);
+
+      let frame: TicketFrame;
+      try {
+        frame = JSON.parse(typeof ev.data === 'string' ? ev.data : '') as TicketFrame;
+      } catch {
+        setStatus('error');
+        setErrorMsg('Malformed console handshake');
+        ws.close();
+        return;
+      }
+      if (frame.type === 'error' || !frame.ticket) {
+        setStatus('error');
+        setErrorMsg(frame.message ?? 'Console unavailable');
+        ws.close();
+        return;
+      }
+
+      try {
+        rfb = new RFB(el, ws, { credentials: { password: frame.ticket } });
+      } catch (err) {
+        setStatus('error');
+        setErrorMsg(err instanceof Error ? err.message : 'noVNC init failed');
+        ws.close();
+        return;
+      }
+      rfbRef.current = rfb;
+      rfb.scaleViewport = true;
+      rfb.background = '#000000';
+
+      rfb.addEventListener('connect', () => {
+        if (!disposed) setStatus('connected');
+      });
+      rfb.addEventListener('disconnect', (e: CustomEvent) => {
+        if (disposed) return;
+        const clean = (e.detail as { clean?: boolean } | undefined)?.clean;
+        setStatus('disconnected');
+        if (!clean) setErrorMsg('Connection lost');
+      });
+      rfb.addEventListener('securityfailure', (e: CustomEvent) => {
+        if (disposed) return;
+        const reason = (e.detail as { reason?: string } | undefined)?.reason;
+        setStatus('error');
+        setErrorMsg(reason ? `Authentication failed: ${reason}` : 'Authentication failed');
+      });
+    };
+
+    ws.addEventListener('message', onFirstMessage);
+    ws.addEventListener('error', () => {
+      // Only meaningful before RFB takes over; afterwards RFB reports state.
+      if (disposed || rfbRef.current) return;
+      setStatus('error');
+      setErrorMsg('Console connection error');
+    });
+    ws.addEventListener('close', () => {
+      if (disposed || rfbRef.current) return;
+      setStatus((s) => (s === 'error' ? s : 'disconnected'));
+    });
+
+    return () => {
+      disposed = true;
+      ws.removeEventListener('message', onFirstMessage);
+      if (rfb) {
+        try {
+          rfb.disconnect();
+        } catch {
+          /* already gone */
+        }
+      } else {
+        try {
+          ws.close();
+        } catch {
+          /* not yet open */
+        }
+      }
+      rfbRef.current = null;
+    };
+  }, [guest.node, guest.type, guest.vmid, attempt]);
+
+  const reconnect = useCallback(() => setAttempt((n) => n + 1), []);
+  const sendCtrlAltDel = useCallback(() => rfbRef.current?.sendCtrlAltDel(), []);
+
+  const overlay = status === 'connecting' || status === 'error' || status === 'disconnected';
+
+  return (
+    <div className="card overflow-hidden p-0">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800">
+        <div className="flex items-center gap-2">
+          <MonitorPlay className="h-4 w-4 text-slate-400" aria-hidden />
+          <span className="text-sm font-medium text-slate-900 dark:text-slate-50">Console</span>
+          <ConsoleStatusBadge status={status} />
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={sendCtrlAltDel}
+            disabled={status !== 'connected'}
+          >
+            <Keyboard className="h-4 w-4" /> Ctrl-Alt-Del
+          </button>
+          <button type="button" className="btn-secondary" onClick={reconnect}>
+            <RefreshCw className="h-4 w-4" /> Reconnect
+          </button>
+        </div>
+      </div>
+
+      <div className="relative bg-black">
+        <div ref={screenRef} className="h-[60vh] w-full" />
+        {overlay && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/70 px-6 text-center text-sm">
+            {status === 'connecting' ? (
+              <span className="text-slate-300">Connecting to console…</span>
+            ) : (
+              <div className="space-y-3">
+                <p className={cx(status === 'error' ? 'text-rose-400' : 'text-slate-300')}>
+                  {errorMsg ?? (status === 'error' ? 'Console error' : 'Disconnected')}
+                </p>
+                <button type="button" className="btn-secondary mx-auto" onClick={reconnect}>
+                  <RefreshCw className="h-4 w-4" /> Reconnect
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ConsoleStatusBadge({ status }: { status: Status }) {
+  switch (status) {
+    case 'connected':
+      return <Badge tone="success">connected</Badge>;
+    case 'connecting':
+      return <Badge tone="warning">connecting…</Badge>;
+    case 'error':
+      return <Badge tone="danger">error</Badge>;
+    default:
+      return <Badge tone="neutral">disconnected</Badge>;
+  }
+}

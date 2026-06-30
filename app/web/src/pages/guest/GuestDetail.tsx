@@ -29,8 +29,9 @@ import { HardwareTab, OptionsTab } from './GuestConfigTabs';
 import { GuestSnapshotsTab } from './GuestSnapshotsTab';
 import { GuestBackupTab } from './GuestBackupTab';
 import { GuestTasksTab } from './GuestTasksTab';
+import { GuestConsole } from './GuestConsole';
 
-type TabId = 'summary' | 'hardware' | 'options' | 'snapshots' | 'backup' | 'tasks';
+type TabId = 'summary' | 'hardware' | 'options' | 'snapshots' | 'backup' | 'tasks' | 'console';
 
 const CONFIRM_ACTIONS: GuestAction[] = ['stop', 'reboot', 'shutdown'];
 
@@ -45,6 +46,7 @@ export function GuestDetail({ guest }: { guest: Guest }) {
     { id: 'snapshots', label: 'Snapshots', icon: Camera },
     { id: 'backup', label: 'Backup', icon: Archive },
     { id: 'tasks', label: 'Task Log', icon: ListChecks },
+    { id: 'console', label: 'Console', icon: TerminalSquare },
   ];
 
   return (
@@ -53,10 +55,6 @@ export function GuestDetail({ guest }: { guest: Guest }) {
         {tabs.map((t) => (
           <TabButton key={t.id} active={tab === t.id} onClick={() => setTab(t.id)} icon={t.icon} label={t.label} />
         ))}
-        <span className="ml-1 inline-flex cursor-not-allowed items-center gap-2 px-3 py-2 text-sm font-medium text-slate-400 dark:text-slate-600" title="Console — coming soon">
-          <TerminalSquare className="h-4 w-4" aria-hidden /> Console
-          <Badge tone="neutral">soon</Badge>
-        </span>
       </div>
 
       {tab === 'summary' && <SummaryTab guest={guest} />}
@@ -65,6 +63,7 @@ export function GuestDetail({ guest }: { guest: Guest }) {
       {tab === 'snapshots' && <GuestSnapshotsTab guest={guest} />}
       {tab === 'backup' && <GuestBackupTab guest={guest} />}
       {tab === 'tasks' && <GuestTasksTab guest={guest} />}
+      {tab === 'console' && <GuestConsole guest={guest} />}
     </div>
   );
 }
