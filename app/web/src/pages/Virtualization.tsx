@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   Boxes,
+  ChevronLeft,
   Container,
   MonitorPlay,
   Play,
@@ -12,6 +13,7 @@ import {
   RotateCcw,
   Search,
   Server,
+  Settings2,
   Square,
   Terminal as TerminalIcon,
 } from 'lucide-react';
@@ -38,6 +40,7 @@ import { ProgressBar } from '../components/ProgressBar';
 const Terminal = lazy(() =>
   import('../components/Terminal').then((m) => ({ default: m.Terminal })),
 );
+import { GuestDetail } from './guest/GuestDetail';
 import { Toggle } from './Shares';
 
 const GUESTS_REFETCH_MS = 5000;
@@ -135,6 +138,7 @@ function GuestsView({
   });
 
   const [creating, setCreating] = useState(false);
+  const [selected, setSelected] = useState<Guest | null>(null);
   const [pendingAction, setPendingAction] = useState<{ guest: Guest; action: GuestAction } | null>(
     null,
   );
@@ -155,6 +159,24 @@ function GuestsView({
       actionMut.mutate({ guest, action });
     }
   };
+
+  // Selected guest takes over the page (mirrors the community-script terminal).
+  if (selected) {
+    return (
+      <div>
+        <PageHeader
+          title={selected.name || `guest-${selected.vmid}`}
+          description={`${selected.type === 'qemu' ? 'VM' : 'LXC'} ${selected.vmid} · node ${selected.node}`}
+          actions={
+            <button className="btn-secondary" onClick={() => setSelected(null)}>
+              <ChevronLeft className="h-4 w-4" /> Back to guests
+            </button>
+          }
+        />
+        <GuestDetail guest={selected} />
+      </div>
+    );
+  }
 
   const columns: Column<Guest>[] = [
     {
@@ -227,7 +249,16 @@ function GuestsView({
       key: 'actions',
       header: '',
       align: 'right',
-      render: (g) => <GuestActions guest={g} onAction={runAction} busy={actionMut.isPending} />,
+      render: (g) => (
+        <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+          <IconAction
+            title="Manage"
+            onClick={() => setSelected(g)}
+            icon={Settings2}
+          />
+          <GuestActions guest={g} onAction={runAction} busy={actionMut.isPending} />
+        </div>
+      ),
     },
   ];
 
@@ -257,6 +288,7 @@ function GuestsView({
           columns={columns}
           rows={guestsQ.data ?? []}
           rowKey={(g) => `${g.type}-${g.vmid}`}
+          onRowClick={(g) => setSelected(g)}
           emptyMessage="No VMs or containers yet. Create one to get started."
         />
       )}

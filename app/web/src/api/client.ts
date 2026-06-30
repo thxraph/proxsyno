@@ -107,4 +107,28 @@ export const api = {
     `${BASE}/files/download?path=${encodeURIComponent(filePath)}`,
 };
 
+// ---- Generic Proxmox proxy helpers ----
+// The backend exposes ANY Proxmox path under /api/pve/<path> and returns
+// `{ data: <result> }`. These helpers forward params and unwrap `data`.
+// Callers pass the full proxy path, e.g. `/pve/nodes/pve/qemu/100/config`.
+async function pveRequest<T>(
+  method: string,
+  path: string,
+  params?: Record<string, unknown>,
+): Promise<T> {
+  const body =
+    params && Object.keys(params).length > 0 ? params : undefined;
+  const res = await request<{ data: T } | undefined>(method, path, body);
+  return (res?.data as T) ?? (undefined as T);
+}
+
+export const pve = {
+  get: <T>(path: string) => pveRequest<T>('GET', path),
+  post: <T = unknown>(path: string, params?: Record<string, unknown>) =>
+    pveRequest<T>('POST', path, params),
+  put: <T = unknown>(path: string, params?: Record<string, unknown>) =>
+    pveRequest<T>('PUT', path, params),
+  del: <T = unknown>(path: string) => pveRequest<T>('DELETE', path),
+};
+
 export type { RequestOptions };

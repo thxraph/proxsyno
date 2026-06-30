@@ -1,6 +1,8 @@
 import { useMemo, type ComponentType } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
+  Building2,
+  Cpu,
   FolderOpen,
   HardDrive,
   LayoutDashboard,
@@ -17,6 +19,8 @@ import { Shares } from '../../pages/Shares';
 import { Users } from '../../pages/Users';
 import { Files } from '../../pages/Files';
 import { Virtualization } from '../../pages/Virtualization';
+import { NodeApp } from '../../pages/node/NodeApp';
+import { DatacenterApp } from '../../pages/datacenter/DatacenterApp';
 
 export interface AppDef {
   key: string;
@@ -72,7 +76,24 @@ export const APPS: AppDef[] = [
     component: Virtualization,
     defaultSize: { w: 1040, h: 700 },
   },
+  {
+    key: 'node',
+    title: 'Node',
+    icon: Cpu,
+    component: NodeApp,
+    defaultSize: { w: 1080, h: 720 },
+  },
+  {
+    key: 'datacenter',
+    title: 'Datacenter',
+    icon: Building2,
+    component: DatacenterApp,
+    defaultSize: { w: 1100, h: 740 },
+  },
 ];
+
+// Apps that only make sense on a Proxmox host (hidden otherwise).
+const PROXMOX_APPS = new Set(['virtualization', 'node', 'datacenter']);
 
 export const APP_MAP: Record<string, AppDef> = Object.fromEntries(
   APPS.map((a) => [a.key, a]),
@@ -89,7 +110,7 @@ export function useApps(): AppDef[] {
   });
   const isProxmox = proxmoxQ.data?.isProxmox ?? false;
   return useMemo(
-    () => (isProxmox ? APPS : APPS.filter((a) => a.key !== 'virtualization')),
+    () => (isProxmox ? APPS : APPS.filter((a) => !PROXMOX_APPS.has(a.key))),
     [isProxmox],
   );
 }

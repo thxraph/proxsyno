@@ -282,6 +282,82 @@ export interface GuestCreateResponse {
   vmid: number;
 }
 
+// ---- Guest detail (raw Proxmox proxy shapes) ----
+// Proxmox returns dynamic objects; keep these loose. `config` is an open record
+// with helper-friendly typed accessors at the call site.
+
+// Identifies a guest for the detail view (subset of Guest).
+export interface GuestRef {
+  vmid: number;
+  type: GuestType;
+  node: string;
+  name: string;
+}
+
+// A guest config (qemu/lxc) — dynamic key/value map from `.../config`.
+export type PveConfig = Record<string, unknown>;
+
+// `.../status/current`
+export interface PveStatusCurrent {
+  status?: string;
+  uptime?: number;
+  cpu?: number; // 0..1
+  cpus?: number;
+  mem?: number;
+  maxmem?: number;
+  disk?: number;
+  maxdisk?: number;
+  name?: string;
+  ha?: unknown;
+  [k: string]: unknown;
+}
+
+// `.../snapshot` list entries (plus the synthetic "current" node).
+export interface PveSnapshot {
+  name: string;
+  description?: string;
+  snaptime?: number;
+  parent?: string;
+  vmstate?: number;
+  running?: number;
+}
+
+// `nodes/:node/tasks`
+export interface PveTask {
+  upid: string;
+  type?: string;
+  status?: string;
+  starttime?: number;
+  endtime?: number;
+  user?: string;
+  node?: string;
+  id?: string;
+  exitstatus?: string;
+}
+
+// `nodes/:node/storage`
+export interface PveStorage {
+  storage: string;
+  type?: string;
+  content?: string;
+  active?: number;
+  enabled?: number;
+  avail?: number;
+  total?: number;
+  used?: number;
+}
+
+// `nodes/:node/storage/:storage/content`
+export interface PveStorageContent {
+  volid: string;
+  content?: string;
+  vmid?: number;
+  size?: number;
+  ctime?: number;
+  format?: string;
+  notes?: string;
+}
+
 // Console WebSocket wire protocol (JSON text frames)
 export type ConsoleClientMessage =
   | { type: 'input'; data: string }
