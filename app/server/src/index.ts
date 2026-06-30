@@ -22,6 +22,11 @@ import { usersRouter, groupsRouter } from "./routes/users.js";
 import { filesRouter } from "./routes/files.js";
 import { proxmoxRouter } from "./routes/proxmox.js";
 import { pveRouter } from "./routes/pve.js";
+import { dockerRouter } from "./routes/docker.js";
+import { downloadsRouter } from "./routes/downloads.js";
+import { photosRouter } from "./routes/photos.js";
+import { notesRouter } from "./routes/notes.js";
+import { surveillanceRouter } from "./routes/surveillance.js";
 import { SystemSampler } from "./services/system.js";
 import {
   isScriptInCatalog,
@@ -71,6 +76,11 @@ api.use("/groups", groupsRouter);
 api.use("/files", filesRouter);
 api.use("/proxmox", proxmoxRouter);
 api.use("/pve", pveRouter);
+api.use("/docker", dockerRouter);
+api.use("/downloads", downloadsRouter);
+api.use("/photos", photosRouter);
+api.use("/notes", notesRouter);
+api.use("/surveillance", surveillanceRouter);
 
 // Unknown /api/* path → JSON 404 (before the SPA fallback).
 api.use(notFoundHandler);

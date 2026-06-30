@@ -57,7 +57,9 @@ export function parseConsoleParams(search: URLSearchParams): ConsoleParams | nul
   const node = search.get("node") ?? "";
   const type = search.get("type") ?? "";
   const vmidRaw = search.get("vmid") ?? "";
-  if (!NODE_NAME_REGEX.test(node)) return null;
+  // NODE_NAME_REGEX permits dots; reject ".." so node can't normalise the PVE
+  // API path upward (it is interpolated into /api2/json/nodes/<node>/...).
+  if (!NODE_NAME_REGEX.test(node) || node.includes("..")) return null;
   if (type !== "qemu" && type !== "lxc") return null;
   const vmid = Number(vmidRaw);
   if (!Number.isInteger(vmid) || vmid <= 0) return null;

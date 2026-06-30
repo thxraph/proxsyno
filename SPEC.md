@@ -244,7 +244,9 @@ wrapper. The docker command is itself an **argv array** (e.g.
 - DockerContainer: `{ id:string, name:string, image:string, state:"running"|"exited"|"created"|"paused"|"restarting"|"dead", status:string, ports:[{hostIp?:string, hostPort?:number, containerPort:number, proto:"tcp"|"udp"}], createdSec:number }`
 - DockerImage: `{ id:string, repo:string, tag:string, sizeBytes:number }`
 
-## REST (base `/api/proxmox/guests/:type/:vmid/docker`, type∈{qemu,lxc})
+## REST (base `/api/docker/:type/:vmid`, type∈{qemu,lxc})
+> As-built base path. `id` is validated `^[a-zA-Z0-9][a-zA-Z0-9_.-]*$` (anchored
+> leading char to block docker option-injection, e.g. an id of `--help`).
 - `GET  /status` → `DockerStatus`. Probes the guest: running? transport reachable?
   `docker version` present? Cache briefly per guest.
 - `GET  /containers` → `DockerContainer[]` (`docker ps -a --format "{{json .}}"`).
@@ -294,3 +296,60 @@ DSM feel) using the dark palette from docs/ui-conventions.md.
 - **Taskbar** (bottom): a **launcher** ("apps" button → menu/grid of all apps), a button per open window (click = focus or restore; shows minimized state), a live mini CPU/mem readout (reuse the /ws/system hook), the logged-in user + logout, and a clock.
 - **App registry:** `{ key, title, icon (lucide), component, defaultSize }` for Dashboard, Storage, Shares, Users, Files, Virtualization. **Virtualization is included only when `GET /api/proxmox/available` → isProxmox** (carry over the existing gate). Docker app will register here later.
 - Reuse the existing page components as window bodies unchanged where possible; drop the now-unused AppShell/Sidebar/TopBar. Comply with docs/ui-conventions.md (no double borders, orange accent, icons, no native dialogs).
+
+---
+
+# Addendum: guest VNC console
+
+In-browser noVNC console for a qemu VM or LXC, app key `console` surfaced as the
+**Console** tab in guest detail.
+
+- **WS** `/ws/pve/console?node=&type=&vmid=` (cookie-auth on upgrade, 30s heartbeat).
+  The backend opens a Proxmox `vncproxy` via the **local `:8006` HTTP API** — *not*
+  `pvesh create vncproxy`, which the CLI overrides to run the proxy in the
+  foreground (it blocks and never returns the `{port,ticket}` JSON). It authenticates
+  with a `root@pam` ticket + CSRF token **minted from the cluster authkey** via
+  `PVE::AccessControl` (we run as root; no stored secret, no password). The returned
+  `port` is range-checked 5900–5999 and only `127.0.0.1` is ever dialed.
+- Wire protocol: backend sends ONE JSON text frame `{type:"vnc-ticket", ticket}` (or
+  `{type:"error", message}`), then bridges the socket as a raw binary RFB pipe to the
+  local vncterm. The browser hands the still-open socket to noVNC's `RFB` with
+  `credentials.password = ticket`. `node` rejects `..`; vite build target `es2022`
+  (noVNC's entry uses top-level await).
+
+---
+
+# Addendum: Synology Station apps
+
+NAS-side apps (NOT Proxmox-gated). All routers mount after `requireAuth`; all paths
+that touch the filesystem resolve through the `/mnt` realpath jail (`fsbrowse.ts`).
+
+## Download Station — `/api/downloads`
+- Engine: `aria2c` RPC daemon (http/https/magnet/torrent) when installed, else a
+  `wget` per-job fallback (http/https only; magnet rejected `400`). `GET /capabilities`
+  → `{engine:"aria2"|"wget", magnet:boolean}`.
+- `GET /` list jobs; `POST /` `{url, dest}` (url `^(https?|magnet):`, dest jailed);
+  `POST /:id/:action` (pause|resume|cancel); `DELETE /:id`. Jobs persisted to
+  `${PROXSYNO_DATA_DIR|/var/lib/proxsyno}/downloads.json`; interrupted → `paused` on
+  restart. UI polls (`refetchInterval` 1.5s).
+
+## Photos — `/api/photos`
+- Read-only media gallery over the jail. `GET /?path=<dir>` → `{path, hasThumbnailer,
+  folders[], items[]}`; `GET /raw?path=` (Range stream); `GET /thumb?path=` (cached
+  320px via vipsthumbnail/ffmpeg when present, else scaled original); `DELETE /?path=`.
+  Exts: jpg/jpeg/png/gif/webp/heic, mp4/mov/webm/mkv. Lightbox with next/prev.
+
+## Note Station — `/api/notes`
+- Markdown notebooks. `GET /?q=` → `{notebooks, notes}` (body-less summaries);
+  `GET/POST/PUT/DELETE /:id`. Server-generated UUID ids (never a client path); atomic
+  tmp-then-rename store under `${NOTES_DIR|/var/lib/proxsyno/notes}`; body ≤ 200k.
+  3-pane UI, dependency-free markdown→HTML (escaped, href-whitelisted).
+
+## Surveillance — `/api/surveillance` (Frigate)
+- Authenticated reverse proxy to a Frigate NVR (`FRIGATE_URL`, default
+  `http://127.0.0.1:5000`; set in `/etc/proxsyno/proxsyno.env`). `GET /status` →
+  `{available, ui, version?, cameras?}` — returns `available:false` (HTTP 200, no
+  throw) when Frigate is down so the UI shows a "start LXC 100" state. `GET /config`,
+  `/events`, `/camera/:name/latest.jpg`, `/event/:id/{thumbnail,snapshot}.jpg` proxy
+  Frigate; `:name`/`:id` validated, `..` rejected, no caller cookies forwarded, media
+  streamed not buffered.

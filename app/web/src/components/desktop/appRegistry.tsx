@@ -2,12 +2,17 @@ import { useMemo, type ComponentType } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Building2,
+  Cctv,
+  Container,
   Cpu,
+  Download,
   FolderOpen,
   HardDrive,
+  Image as ImageIcon,
   LayoutDashboard,
   Network,
   Server,
+  StickyNote,
   Users as UsersIcon,
   type LucideIcon,
 } from 'lucide-react';
@@ -21,6 +26,11 @@ import { Files } from '../../pages/Files';
 import { Virtualization } from '../../pages/Virtualization';
 import { NodeApp } from '../../pages/node/NodeApp';
 import { DatacenterApp } from '../../pages/datacenter/DatacenterApp';
+import { DockerApp } from '../../pages/docker/DockerApp';
+import { DownloadStation } from '../../pages/downloads/DownloadStation';
+import { Photos } from '../../pages/photos/Photos';
+import { NoteStation } from '../../pages/notes/NoteStation';
+import { Surveillance } from '../../pages/surveillance/Surveillance';
 
 export interface AppDef {
   key: string;
@@ -90,10 +100,45 @@ export const APPS: AppDef[] = [
     component: DatacenterApp,
     defaultSize: { w: 1100, h: 740 },
   },
+  {
+    key: 'docker',
+    title: 'Docker',
+    icon: Container,
+    component: DockerApp,
+    defaultSize: { w: 1040, h: 700 },
+  },
+  {
+    key: 'downloads',
+    title: 'Download Station',
+    icon: Download,
+    component: DownloadStation,
+    defaultSize: { w: 1000, h: 660 },
+  },
+  {
+    key: 'photos',
+    title: 'Photos',
+    icon: ImageIcon,
+    component: Photos,
+    defaultSize: { w: 1040, h: 720 },
+  },
+  {
+    key: 'notes',
+    title: 'Note Station',
+    icon: StickyNote,
+    component: NoteStation,
+    defaultSize: { w: 1100, h: 720 },
+  },
+  {
+    key: 'surveillance',
+    title: 'Surveillance',
+    icon: Cctv,
+    component: Surveillance,
+    defaultSize: { w: 1040, h: 720 },
+  },
 ];
 
 // Apps that only make sense on a Proxmox host (hidden otherwise).
-const PROXMOX_APPS = new Set(['virtualization', 'node', 'datacenter']);
+const PROXMOX_APPS = new Set(['virtualization', 'node', 'datacenter', 'docker']);
 
 export const APP_MAP: Record<string, AppDef> = Object.fromEntries(
   APPS.map((a) => [a.key, a]),

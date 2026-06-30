@@ -79,6 +79,11 @@ export const config = {
   smbConfPath: envStr("SMB_CONF", "/etc/samba/smb.conf"),
   nfsExportsPath: envStr("NFS_EXPORTS", "/etc/exports"),
 
+  // Base URL of the Frigate NVR (LXC 100). Proxied by /api/surveillance/*; the
+  // browser never talks to Frigate directly. Defaults to loopback — override
+  // with FRIGATE_URL once the Frigate LXC has a reachable IP.
+  frigateUrl: envStr("FRIGATE_URL", "http://127.0.0.1:5000"),
+
   /**
    * Path to the built frontend served in production. Derived from this module's
    * location so it is correct regardless of cwd:
