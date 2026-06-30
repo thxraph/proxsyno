@@ -35,6 +35,8 @@ ENV_DIR="/etc/proxsyno"
 ENV_FILE="${ENV_DIR}/proxsyno.env"
 UNIT_SRC="${SRC_DIR}/deploy/proxsyno.service"
 UNIT_DEST="/etc/systemd/system/proxsyno.service"
+PAM_SRC="${SRC_DIR}/deploy/pam/proxsyno"
+PAM_DEST="/etc/pam.d/proxsyno"
 NODE_MAJOR=20
 
 FILES_ROOT="/mnt"
@@ -214,10 +216,23 @@ PROXSYNO_JWT_SECRET=${JWT_SECRET}
 PORT=${PORT}
 ADMIN_GROUP=${ADMIN_GROUP}
 FILES_ROOT=${FILES_ROOT}
+PAM_SERVICE=proxsyno
 NODE_ENV=production
 EOF
 chmod 600 "$ENV_FILE"
 ok "Environment file written (mode 0600)."
+
+# ----------------------------------------------------------------------------
+# 5b. PAM profile (local-only auth; avoids winbind noise on Samba hosts)
+# ----------------------------------------------------------------------------
+log "Installing PAM profile ${PAM_DEST}…"
+if [[ -f "$PAM_SRC" ]]; then
+  install -m 0644 "$PAM_SRC" "$PAM_DEST"
+  ok "PAM profile installed (auth service: proxsyno)."
+else
+  warn "missing $PAM_SRC; falling back to PAM_SERVICE=login in the env file."
+  sed -i 's/^PAM_SERVICE=.*/PAM_SERVICE=login/' "$ENV_FILE"
+fi
 
 # ----------------------------------------------------------------------------
 # 6. systemd unit
@@ -225,8 +240,11 @@ ok "Environment file written (mode 0600)."
 log "Installing systemd unit…"
 install -m 0644 "$UNIT_SRC" "$UNIT_DEST"
 systemctl daemon-reload
-systemctl enable --now proxsyno.service
-ok "Service 'proxsyno' enabled and started."
+systemctl enable proxsyno.service >/dev/null 2>&1 || true
+# Use restart (not `enable --now`): on a re-install of an already-running
+# service, `--now` is a no-op and the new build would never load.
+systemctl restart proxsyno.service
+ok "Service 'proxsyno' enabled and (re)started."
 
 sleep 1
 if ! systemctl is-active --quiet proxsyno.service; then

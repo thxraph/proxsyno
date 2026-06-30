@@ -4,7 +4,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { config } from "../config.js";
-import { getUserGroups, pamLogin } from "../auth/pam.js";
+import { getUserGroups, getUserPasswdEntry, pamLogin } from "../auth/pam.js";
 import { signSession, type SessionUser } from "../auth/jwt.js";
 import { requireAuth } from "../auth/middleware.js";
 import { ApiError, asyncHandler } from "../util/errors.js";
@@ -21,7 +21,7 @@ function cookieOptions() {
   return {
     httpOnly: true,
     sameSite: "strict" as const,
-    secure: config.isProd, // require HTTPS in production
+    secure: config.cookieSecure, // HTTPS-only cookie; off by default for the HTTP MVP
     path: "/",
     maxAge: config.sessionTtlSec * 1000,
   };
@@ -37,9 +37,13 @@ authRouter.post(
     if (!ok) throw ApiError.unauthorized("Invalid username or password");
 
     const groups = await getUserGroups(username);
-    const isAdmin = groups.includes(config.adminGroup);
+    const pw = await getUserPasswdEntry(username);
+    const isRoot = pw?.uid === 0;
+    const isAdmin = groups.includes(config.adminGroup) || (config.allowRoot && isRoot);
     if (!isAdmin) {
-      throw ApiError.forbidden(`Login restricted to members of the '${config.adminGroup}' group`);
+      throw ApiError.forbidden(
+        `Login restricted to root or members of the '${config.adminGroup}' group`,
+      );
     }
 
     const user: SessionUser = { name: username, groups, isAdmin };

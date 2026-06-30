@@ -1,0 +1,10 @@
+# PAM profile for the proxsyno app (installed to /etc/pam.d/proxsyno).
+#
+# Authenticate LOCAL Unix accounts only. We deliberately do NOT @include
+# common-auth here: on hosts running Samba/winbind (i.e. most NAS boxes),
+# common-auth routes through pam_winbind first, which floods the logs with
+# WBC_ERR_AUTH_ERROR / PAM_USER_UNKNOWN and adds a needless domain round-trip.
+# We also avoid the `login` service's TTY-only modules (securetty, loginuid,
+# lastlog, motd) that make no sense for a daemon doing password verification.
+auth     required pam_unix.so
+account  required pam_unix.so

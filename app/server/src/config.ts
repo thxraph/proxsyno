@@ -30,6 +30,12 @@ function envInt(key: string, fallback: number): number {
   return n;
 }
 
+function envBool(key: string, fallback: boolean): boolean {
+  const v = process.env[key];
+  if (v === undefined || v === "") return fallback;
+  return /^(1|true|yes|on)$/i.test(v.trim());
+}
+
 const nodeEnv = envStr("NODE_ENV", "development");
 const isProd = nodeEnv === "production";
 
@@ -52,9 +58,20 @@ export const config = {
   jwtSecret,
   sessionTtlSec: envInt("SESSION_TTL_SEC", 12 * 60 * 60),
   cookieName: "proxsyno_session",
+  // Mark the session cookie Secure (HTTPS-only). The MVP serves plain HTTP, so
+  // this defaults to OFF — a Secure cookie would be silently dropped by browsers
+  // over http:// and login would appear to fail. Set COOKIE_SECURE=true once the
+  // app sits behind a TLS reverse proxy.
+  cookieSecure: envBool("COOKIE_SECURE", false),
 
   adminGroup: envStr("ADMIN_GROUP", "sudo"),
-  pamService: envStr("PAM_SERVICE", "login"),
+  // Allow root (uid 0) to log in even though it is not in adminGroup. Root is
+  // the natural NAS admin; set ALLOW_ROOT_LOGIN=false to forbid it.
+  allowRoot: envBool("ALLOW_ROOT_LOGIN", true),
+  // Defaults to the "proxsyno" PAM service (installed by install-app.sh to
+  // /etc/pam.d/proxsyno) — local-only auth, no winbind. For a dev run without
+  // the installer, either create that file or set PAM_SERVICE=login.
+  pamService: envStr("PAM_SERVICE", "proxsyno"),
 
   filesRoot,
   maxUploadBytes: envInt("MAX_UPLOAD_BYTES", 5 * 1024 * 1024 * 1024),

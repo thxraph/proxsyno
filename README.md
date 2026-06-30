@@ -71,21 +71,48 @@ first share + users from the UI. See [`docs/post-install.md`](docs/post-install.
 The custom app is a Node/Express backend + React frontend, deployed as a single
 systemd service on port `8800`.
 
+**One-line install** (community-script style — run as root on the Proxmox host):
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/thxraph/proxsyno/main/bootstrap.sh)"
+```
+
+Pass `install-app.sh` flags after a `--`:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/thxraph/proxsyno/main/bootstrap.sh)" -- --files-root /mnt/raid
+```
+
+Or clone and run it yourself (read the script first — it runs as root):
+
 ```bash
 git clone https://github.com/thxraph/proxsyno.git
 cd proxsyno
 sudo ./install-app.sh                     # add --files-root /mnt/raid --port 8800 etc.
 ```
 
-This installs Node.js 20 + build deps, copies the repo to `/opt/proxsyno`, builds
-both halves, writes `/etc/proxsyno/proxsyno.env` (with a generated JWT secret), and
-enables the `proxsyno` systemd service.
+Either way it installs Node.js 20 + build deps, copies the repo to `/opt/proxsyno`,
+builds both halves, writes `/etc/proxsyno/proxsyno.env` (with a generated JWT
+secret), and enables the `proxsyno` systemd service.
 
-Then open `http://<host-ip>:8800` and log in as a user in the `sudo` group (**not
-root** — root cannot log in). Create one first if needed:
+> Unlike most Proxmox community scripts, proxsyno installs **on the host**, not in
+> a new LXC — it has to run on the host to manage the host's users, shares, and
+> storage. It still touches none of your disks, RAID, or existing VMs/LXCs.
+
+Then open `http://<host-ip>:8800` and log in.
+
+### Logging in
+
+You authenticate with **real Linux accounts** on the host (via PAM). Allowed:
+
+- **`root`** — permitted by default (it's the natural NAS admin; disable with
+  `ALLOW_ROOT_LOGIN=false`), or
+- any user in the **`sudo`** group (configurable via `--admin-group`).
+
+Other accounts are rejected with `403`. To make a dedicated admin user:
 
 ```bash
-sudo adduser nasadmin && sudo usermod -aG sudo nasadmin
+sudo adduser nasadmin && sudo usermod -aG sudo nasadmin   # then set its password
 ```
 
 Useful flags: `--files-root <path>` (file-browser jail, default `/mnt`),
@@ -93,8 +120,33 @@ Useful flags: `--files-root <path>` (file-browser jail, default `/mnt`),
 
 Manage it like any service: `systemctl status proxsyno`, `journalctl -u proxsyno -f`.
 
-> **MVP serves plain HTTP.** Put it behind a TLS reverse proxy before exposing it
-> beyond your LAN — see [`docs/roadmap.md`](docs/roadmap.md).
+> **MVP serves plain HTTP.** The session cookie is therefore **not** marked
+> `Secure` by default (a `Secure` cookie would be dropped by browsers over
+> `http://` and login would silently fail). Put the app behind a **TLS reverse
+> proxy** before exposing it beyond your LAN, and then set `COOKIE_SECURE=true`
+> in `/etc/proxsyno/proxsyno.env` — see [`docs/roadmap.md`](docs/roadmap.md).
+
+#### Login troubleshooting
+
+- **Login seems to succeed then bounces back** → you're on HTTP with
+  `COOKIE_SECURE=true`. Leave it `false` for plain HTTP.
+- **`403` for a valid user** → that account isn't `root` and isn't in the
+  `sudo` group. Add it: `sudo usermod -aG sudo <user>`.
+- **`500 PAM module unavailable` / auth always fails** → the PAM profile is
+  missing. `install-app.sh` installs `/etc/pam.d/proxsyno`; on a manual setup,
+  create it (local-only `pam_unix`) or set `PAM_SERVICE=login`.
+
+### Configuration (`/etc/proxsyno/proxsyno.env`)
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PORT` | `8800` | HTTP listen port |
+| `ADMIN_GROUP` | `sudo` | group allowed to log in |
+| `ALLOW_ROOT_LOGIN` | `true` | allow `root` to log in |
+| `FILES_ROOT` | `/mnt` | file-browser jail root |
+| `PAM_SERVICE` | `proxsyno` | PAM service used to verify passwords |
+| `COOKIE_SECURE` | `false` | mark session cookie `Secure` (enable behind TLS) |
+| `PROXSYNO_JWT_SECRET` | _generated_ | session-signing secret (keep private) |
 
 ### Developing the app
 
