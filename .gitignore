@@ -1,0 +1,7 @@
+# downloaded packages / build artifacts
+*.deb
+*.tmp
+tmp/
+# editor noise
+*.swp
+.DS_Store
