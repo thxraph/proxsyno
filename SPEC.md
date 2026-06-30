@@ -156,3 +156,122 @@ DSM-like but clean and modern (don't pixel-copy Synology — own look):
 
 HTTPS/TLS termination (document a reverse proxy), 2FA, quotas, snapshots UI,
 Docker/app store, multi-host. Note these in docs/roadmap.
+
+---
+
+# Addendum: Virtualization (Proxmox) — VMs, LXC, community scripts
+
+Adds a **Virtualization** page that lists VMs + LXC guests, controls their
+lifecycle, creates new ones (manual VM via `qm`, manual LXC via `pct`), and runs
+**community-scripts** (community-scripts/ProxmoxVE) inside an interactive
+in-browser terminal. All routes require auth; all shell-outs use the execFile
+args-array wrapper (no shell strings). If `qm`/`pct` are absent (non-Proxmox host)
+the API returns `{isProxmox:false}` and the UI hides the menu.
+
+## Backend (app/server)
+
+New `services/proxmox.ts` (wraps `pvesh`/`qm`/`pct`/`pvesm`/`pveam`) and
+`routes/proxmox.ts`. Add a PTY console WebSocket. New deps: `node-pty`
+(native; build deps already installed by install-app.sh).
+
+### Types
+- Guest: `{ vmid:number, type:"qemu"|"lxc", name:string, status:"running"|"stopped"|"paused"|"unknown", node:string, cpu:number /*0..1*/, maxcpu:number, mem:number, maxmem:number, disk:number, maxdisk:number, uptimeSec:number, template:boolean }`
+- ScriptMeta: `{ slug:string, name:string, description?:string, category?:string, source:string /* "ct/<slug>.sh" */, url:string }`
+
+### REST (base `/api/proxmox`)
+- `GET  /available` → `{ isProxmox:boolean, node:string, pveVersion?:string }`
+- `GET  /guests` → `Guest[]`  (from `pvesh get /cluster/resources --type vm --output-format json`)
+- `POST /guests/:type/:vmid/:action` — `type∈{qemu,lxc}`, `action∈{start,stop,shutdown,reboot}` → `202 {ok:true}` (`qm <action> <vmid>` / `pct <action> <vmid>`). Validate vmid is int, enums strict.
+- `GET  /options` → form data: `{ node, nextId:number, storages:[{name,type,content:string[],availBytes,totalBytes}], isos:[{volid,storage,sizeBytes}], templates:[{volid,storage,name}], bridges:[{name}], osTypes:string[] }`
+  (`pvesh get /cluster/nextid`; `pvesm status`; `pvesm list <storage> --content iso`; `pveam available`+`pveam list <storage>`; bridges from `ip -j link` where name matches `^vmbr\d+`)
+- `POST /vm` body `{ name, cores, memoryMB, diskGB, storage, isoVolid?, bridge, ostype? }` →
+  `qm create <nextid> --name … --cores … --memory … --net0 virtio,bridge=<bridge> --scsihw virtio-scsi-pci --scsi0 <storage>:<diskGB> [--ide2 <isoVolid>,media=cdrom] [--ostype …] --boot order=scsi0;ide2` → `201 {vmid}`
+- `POST /lxc` body `{ hostname, templateVolid, cores, memoryMB, diskGB, storage, bridge, password, unprivileged?=true, startOnCreate?=false }` →
+  `pct create <nextid> <templateVolid> --hostname … --cores … --memory … --rootfs <storage>:<diskGB> --net0 name=eth0,bridge=<bridge>,ip=dhcp --password <pw> [--unprivileged 1]`, then optional `pct start`. → `201 {vmid}`.
+  (NOTE the password is on argv — visible only to root via /proc; acceptable for MVP, leave a `// TODO(security)` to switch to a no-leak method.)
+- `GET  /scripts` → `ScriptMeta[]` — catalog of community scripts. Build from the
+  official repo metadata; **cache** in memory (TTL ~6h). Robust source discovery:
+  try the repo's JSON metadata; fall back to deriving slug+name from the `ct/*.sh`
+  filenames listed via the GitHub trees API. Pin owner/repo/branch to constants
+  (`community-scripts/ProxmoxVE`, `main`). NEVER accept a user-supplied URL.
+
+### Console WebSocket — `/ws/proxmox/console?script=<slug>`
+- Authenticate the session cookie during the HTTP `upgrade` (same pattern as `/ws/system`); reject `401` otherwise.
+- Validate `slug` matches `^[a-z0-9][a-z0-9-]{0,63}$` AND exists in the cached catalog. Reject otherwise.
+- Spawn a PTY: `node-pty.spawn("bash", ["-lc", "$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/ct/<slug>.sh)"], { name:"xterm-color", cols, rows, env })` — URL built ONLY from pinned constants + validated slug.
+- **Wire protocol (JSON text frames both directions):**
+  - C→S `{ "type":"input", "data":string }` — keystrokes → `pty.write`
+  - C→S `{ "type":"resize", "cols":number, "rows":number }` → `pty.resize`
+  - S→C `{ "type":"output", "data":string }` — pty data
+  - S→C `{ "type":"exit", "code":number }` — process ended; then close
+  - S→C `{ "type":"error", "message":string }`
+- Kill the PTY if the socket closes.
+
+## Frontend (app/web)
+- Add **Virtualization** to the sidebar (hide if `GET /available` → `isProxmox:false`).
+- **Guests table:** name, type badge (VM/LXC), vmid, status badge, cpu%/mem bars, uptime; row actions Start/Stop/Reboot/Shutdown (confirm on stop/reboot) → `POST /guests/...`, then refetch (react-query invalidate).
+- **+ Create** opens a wizard/modal with three tabs:
+  - *Virtual Machine* — name, cores, RAM (MB), disk (GB), storage (select from `/options`), ISO (select), bridge (select), ostype. → `POST /vm`.
+  - *LXC Container* — hostname, template (select), cores, RAM, disk, storage, bridge, root password, unprivileged toggle, start-after-create toggle. → `POST /lxc`.
+  - *Community Script* — searchable list from `/scripts` (name + description + category); on select show a **confirm panel** with the source URL and a "⚠ runs as root on the host" warning; on confirm open a **terminal view**.
+- **Terminal view:** `@xterm/xterm` + `@xterm/addon-fit`, connected to `/ws/proxmox/console?script=<slug>`; send input/resize, write output; show exit code; offer Close. Dark terminal theme.
+- Deps: `@xterm/xterm`, `@xterm/addon-fit`. Types from `lib/types.ts` mirroring the shapes above.
+
+## Out of scope (MVP, leave TODOs)
+Guest consoles (noVNC), clone/migrate/snapshot, disk/network editing post-create,
+cluster/multi-node, qm cloud-init wizard. Manual-create forms can be basic but must
+produce a working guest.
+
+---
+
+# Addendum: Docker-in-guest management
+
+Detect and manage Docker **inside** a guest. proxsyno runs on the host, so it reaches
+the guest's Docker daemon through an exec transport — never a network Docker socket:
+
+- **LXC** → `pct exec <vmid> -- <argv>` (always available).
+- **VM**  → `qm guest exec <vmid> -- <argv>` (requires `qemu-guest-agent` in the VM;
+  detect its absence and surface a clear reason). Parse the JSON it returns
+  (`{ "out-data", "err-data", "exitcode" }`); note its output-size limit and degrade
+  gracefully for large output (e.g. cap `logs --tail`).
+
+All exec goes through a new `services/guestexec.ts` using the execFile args-array
+wrapper. The docker command is itself an **argv array** (e.g.
+`["docker","ps","-a","--format","{{json .}}"]`) — no shell, no string interpolation.
+
+## Types
+- DockerStatus: `{ dockerInstalled:boolean, dockerVersion?:string, reachable:boolean, transport:"pct"|"agent", reason?:string }`
+- DockerContainer: `{ id:string, name:string, image:string, state:"running"|"exited"|"created"|"paused"|"restarting"|"dead", status:string, ports:[{hostIp?:string, hostPort?:number, containerPort:number, proto:"tcp"|"udp"}], createdSec:number }`
+- DockerImage: `{ id:string, repo:string, tag:string, sizeBytes:number }`
+
+## REST (base `/api/proxmox/guests/:type/:vmid/docker`, type∈{qemu,lxc})
+- `GET  /status` → `DockerStatus`. Probes the guest: running? transport reachable?
+  `docker version` present? Cache briefly per guest.
+- `GET  /containers` → `DockerContainer[]` (`docker ps -a --format "{{json .}}"`).
+- `POST /containers/:id/:action` — `action∈{start,stop,restart,remove}` → `202`
+  (`docker <action> <id>`; remove = `docker rm -f`). Validate `id` as `^[a-zA-Z0-9_.-]+$`.
+- `GET  /containers/:id/logs?tail=200` → `{ logs:string }` (`docker logs --tail <n> <id>`,
+  `n` clamped 1..2000). MVP returns a tail snapshot, not a stream.
+- `POST /containers` (run) body
+  `{ image, name?, ports?:[{hostPort,containerPort,proto?="tcp"}], volumes?:[{hostPath,containerPath,readOnly?}], env?:[{key,value}], restart?:"no"|"always"|"unless-stopped"|"on-failure", network?, command? }`
+  → builds a `docker run -d` argv (`--name`, `-p host:container/proto`, `-v host:container[:ro]`,
+  `-e KEY=VALUE`, `--restart`, `--network`, image, [command…]) → `201 {id}`.
+  zod-validate: image `^[a-z0-9][a-z0-9._/:@-]*$`, ports numeric 1..65535, env keys
+  `^[A-Za-z_][A-Za-z0-9_]*$`, paths absolute. Reject anything else.
+- `GET  /images` → `DockerImage[]` (`docker images --format "{{json .}}"`). (optional)
+
+## Frontend
+- Guests that report `dockerInstalled` get a **Docker** affordance (badge on the row +
+  a Docker panel/tab in the guest detail). If `qemu-guest-agent` is missing on a VM,
+  show the reason and a hint to install it.
+- **Containers table**: name, image, state badge (running=emerald, exited=zinc,
+  restarting=amber, dead=rose), ports, created. Row actions Start/Stop/Restart/Remove
+  (confirm on Stop/Remove). A **Logs** action opens a modal with the tail (mono, dark).
+- **+ Run container**: a form matching the `POST /containers` body — image, name,
+  port mappings (repeatable rows), volume mounts (repeatable), env vars (repeatable),
+  restart policy, optional network/command. Client-validate; server is source of truth.
+- Follows `docs/ui-conventions.md` like every other page.
+
+## Out of scope (MVP, leave TODOs)
+docker compose, exec-into-container terminal, live log streaming (use tail), image
+pull/build UI, registry auth, swarm/k8s.

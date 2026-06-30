@@ -184,6 +184,114 @@ export interface FileListResponse {
   entries: FileEntry[];
 }
 
+// ---- Virtualization (Proxmox) ----
+export type GuestType = 'qemu' | 'lxc';
+export type GuestStatus = 'running' | 'stopped' | 'paused' | 'unknown';
+export type GuestAction = 'start' | 'stop' | 'shutdown' | 'reboot';
+
+export interface Guest {
+  vmid: number;
+  type: GuestType;
+  name: string;
+  status: GuestStatus;
+  node: string;
+  cpu: number; // 0..1
+  maxcpu: number;
+  mem: number;
+  maxmem: number;
+  disk: number;
+  maxdisk: number;
+  uptimeSec: number;
+  template: boolean;
+}
+
+export interface ProxmoxAvailable {
+  isProxmox: boolean;
+  node: string;
+  pveVersion?: string;
+}
+
+export interface ProxmoxStorage {
+  name: string;
+  type: string;
+  content: string[];
+  availBytes: number;
+  totalBytes: number;
+}
+
+export interface ProxmoxIso {
+  volid: string;
+  storage: string;
+  sizeBytes: number;
+}
+
+export interface ProxmoxTemplate {
+  volid: string;
+  storage: string;
+  name: string;
+}
+
+export interface ProxmoxBridge {
+  name: string;
+}
+
+export interface ProxmoxOptions {
+  node: string;
+  nextId: number;
+  storages: ProxmoxStorage[];
+  isos: ProxmoxIso[];
+  templates: ProxmoxTemplate[];
+  bridges: ProxmoxBridge[];
+  osTypes: string[];
+}
+
+export interface ScriptMeta {
+  slug: string;
+  name: string;
+  description?: string;
+  category?: string;
+  source: string; // "ct/<slug>.sh"
+  url: string;
+}
+
+export interface VmCreateInput {
+  name: string;
+  cores: number;
+  memoryMB: number;
+  diskGB: number;
+  storage: string;
+  isoVolid?: string;
+  bridge: string;
+  ostype?: string;
+}
+
+export interface LxcCreateInput {
+  hostname: string;
+  templateVolid: string;
+  cores: number;
+  memoryMB: number;
+  diskGB: number;
+  storage: string;
+  bridge: string;
+  password: string;
+  unprivileged?: boolean;
+  startOnCreate?: boolean;
+}
+
+export interface GuestCreateResponse {
+  vmid: number;
+}
+
+// Console WebSocket wire protocol (JSON text frames)
+export type ConsoleClientMessage =
+  | { type: 'input'; data: string }
+  | { type: 'resize'; cols: number; rows: number };
+
+export type ConsoleServerMessage =
+  | { type: 'output'; data: string }
+  | { type: 'exit'; code: number }
+  | { type: 'error'; message: string };
+
 // ---- Error envelope ----
 export interface ApiErrorBody {
   error: {

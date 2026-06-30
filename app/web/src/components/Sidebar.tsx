@@ -1,14 +1,18 @@
 import { NavLink } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import {
   FolderOpen,
   HardDrive,
   LayoutDashboard,
   Network,
+  Server,
   Users,
   X,
   type LucideIcon,
 } from 'lucide-react';
 import { cx } from '../lib/format';
+import { api } from '../api/client';
+import type { ProxmoxAvailable } from '../lib/types';
 
 interface NavItem {
   to: string;
@@ -24,12 +28,27 @@ const NAV: NavItem[] = [
   { to: '/files', label: 'Files', icon: FolderOpen },
 ];
 
+const VIRTUALIZATION_ITEM: NavItem = {
+  to: '/virtualization',
+  label: 'Virtualization',
+  icon: Server,
+};
+
 interface SidebarProps {
   open: boolean;
   onClose: () => void;
 }
 
 export function Sidebar({ open, onClose }: SidebarProps) {
+  // Only show Virtualization when the host is actually running Proxmox.
+  const proxmoxQ = useQuery({
+    queryKey: ['proxmox', 'available'],
+    queryFn: () => api.get<ProxmoxAvailable>('/proxmox/available'),
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+  const items = proxmoxQ.data?.isProxmox ? [...NAV, VIRTUALIZATION_ITEM] : NAV;
+
   return (
     <>
       {/* Mobile backdrop */}
@@ -67,7 +86,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         </div>
 
         <nav className="flex-1 space-y-1 px-3 py-2">
-          {NAV.map(({ to, label, icon: Icon }) => (
+          {items.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}

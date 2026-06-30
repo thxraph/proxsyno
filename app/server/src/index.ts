@@ -20,7 +20,14 @@ import { storageRouter } from "./routes/storage.js";
 import { sharesRouter } from "./routes/shares.js";
 import { usersRouter, groupsRouter } from "./routes/users.js";
 import { filesRouter } from "./routes/files.js";
+import { proxmoxRouter } from "./routes/proxmox.js";
 import { SystemSampler } from "./services/system.js";
+import {
+  isScriptInCatalog,
+  spawnConsolePty,
+  SCRIPT_SLUG_REGEX,
+  type ConsolePty,
+} from "./services/proxmox.js";
 import { errorHandler, notFoundHandler } from "./util/errors.js";
 
 // ---------------------------------------------------------------------------
@@ -54,6 +61,7 @@ api.use("/shares", sharesRouter);
 api.use("/users", usersRouter);
 api.use("/groups", groupsRouter);
 api.use("/files", filesRouter);
+api.use("/proxmox", proxmoxRouter);
 
 // Unknown /api/* path → JSON 404 (before the SPA fallback).
 api.use(notFoundHandler);
@@ -84,6 +92,8 @@ const server = http.createServer(app);
 // noServer mode lets us authenticate the cookie during the upgrade handshake
 // before accepting the socket, mirroring the HTTP auth middleware.
 const wss = new WebSocketServer({ noServer: true });
+// Second endpoint: the interactive Proxmox community-script console PTY.
+const consoleWss = new WebSocketServer({ noServer: true });
 
 function parseCookieHeader(header: string | undefined): Record<string, string> {
   const out: Record<string, string> = {};
@@ -99,9 +109,11 @@ function parseCookieHeader(header: string | undefined): Record<string, string> {
 }
 
 server.on("upgrade", (req, socket, head) => {
-  // Only handle our endpoint; ignore others (e.g. Vite HMR in dev proxies here).
-  const url = req.url ?? "";
-  if (!url.startsWith("/ws/system")) {
+  // Match on pathname only; ignore everything else (e.g. Vite HMR in dev).
+  const pathname = (req.url ?? "").split("?")[0];
+  const isSystem = pathname === "/ws/system";
+  const isConsole = pathname === "/ws/proxmox/console";
+  if (!isSystem && !isConsole) {
     socket.destroy();
     return;
   }
@@ -116,8 +128,9 @@ server.on("upgrade", (req, socket, head) => {
     return;
   }
 
-  wss.handleUpgrade(req, socket, head, (ws) => {
-    wss.emit("connection", ws, req);
+  const target = isConsole ? consoleWss : wss;
+  target.handleUpgrade(req, socket, head, (ws) => {
+    target.emit("connection", ws, req);
   });
 });
 
@@ -152,6 +165,88 @@ wss.on("connection", (ws: WebSocket) => {
 });
 
 // ---------------------------------------------------------------------------
+// Proxmox community-script console (PTY) — JSON wire protocol per the SPEC.
+// ---------------------------------------------------------------------------
+
+function sendJson(ws: WebSocket, msg: unknown): void {
+  if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
+}
+
+function clampDim(n: unknown): number | null {
+  return typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= 1000 ? n : null;
+}
+
+consoleWss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
+  void (async () => {
+    const url = new URL(req.url ?? "", "http://localhost");
+    const slug = url.searchParams.get("script") ?? "";
+
+    // Validate against the strict slug regex AND the cached catalog.
+    if (!SCRIPT_SLUG_REGEX.test(slug) || !(await isScriptInCatalog(slug))) {
+      sendJson(ws, { type: "error", message: "Unknown or invalid script" });
+      ws.close();
+      return;
+    }
+
+    let pty: ConsolePty;
+    try {
+      pty = spawnConsolePty(slug, 80, 24);
+    } catch (err) {
+      sendJson(ws, {
+        type: "error",
+        message: `Failed to start terminal: ${err instanceof Error ? err.message : String(err)}`,
+      });
+      ws.close();
+      return;
+    }
+
+    let killed = false;
+    const cleanup = (): void => {
+      if (killed) return;
+      killed = true;
+      try {
+        pty.kill();
+      } catch {
+        /* already gone */
+      }
+    };
+
+    pty.onData((data) => sendJson(ws, { type: "output", data }));
+    pty.onExit(({ exitCode }) => {
+      sendJson(ws, { type: "exit", code: exitCode });
+      ws.close();
+    });
+
+    ws.on("message", (raw) => {
+      let msg: unknown;
+      try {
+        msg = JSON.parse(raw.toString());
+      } catch {
+        return; // ignore non-JSON frames
+      }
+      if (!msg || typeof msg !== "object") return;
+      const m = msg as { type?: unknown; data?: unknown; cols?: unknown; rows?: unknown };
+      if (m.type === "input" && typeof m.data === "string") {
+        pty.write(m.data);
+      } else if (m.type === "resize") {
+        const cols = clampDim(m.cols);
+        const rows = clampDim(m.rows);
+        if (cols && rows) pty.resize(cols, rows);
+      }
+    });
+
+    ws.on("close", cleanup);
+    ws.on("error", cleanup);
+  })().catch((err) => {
+    sendJson(ws, {
+      type: "error",
+      message: `Console error: ${err instanceof Error ? err.message : String(err)}`,
+    });
+    ws.close();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
 
@@ -169,6 +264,7 @@ for (const sig of ["SIGTERM", "SIGINT"] as const) {
     // eslint-disable-next-line no-console
     console.log(`[proxsyno] ${sig} received, shutting down`);
     wss.clients.forEach((c) => c.close());
+    consoleWss.clients.forEach((c) => c.close());
     server.close(() => process.exit(0));
     // Force-exit if connections linger.
     setTimeout(() => process.exit(0), 5000).unref();
