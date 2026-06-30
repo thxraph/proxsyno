@@ -33,13 +33,29 @@ your running VMs/LXCs.
 | Storage Manager / SMART | `cockpit-storaged`                           |
 | Virtual Machine Manager | Proxmox itself (you already have it)         |
 
+## Two ways to run proxsyno
+
+There are two installers — pick the one that fits you:
+
+| | **(A) Cockpit installer** | **(B) Custom app** |
+| --- | --- | --- |
+| Script | `install.sh` | `install-app.sh` |
+| UI | Cockpit + 45Drives plugins | proxsyno's own DSM-style web app |
+| Port | `:9090` | `:8800` |
+| What it is | proven, off-the-shelf, less to maintain | a single purpose-built UI for shares, users, storage & files |
+| Maturity | stable | the project's own MVP (Node/Express + React) |
+
+Both run **directly on the host** and share the same underlying Samba/NFS — you
+only need one management UI. (A) is the safe default; (B) is the cohesive,
+single-app experience this project is building toward.
+
 ## Requirements
 
 - Proxmox VE 8/9 **or** plain Debian 12/13
 - An existing mounted storage location (e.g. an mdadm/ZFS/LVM array at `/mnt/...`)
 - Root access
 
-## Quick start
+## Quick start — (A) Cockpit installer
 
 ```bash
 git clone https://github.com/thxraph/proxsyno.git
@@ -49,6 +65,47 @@ sudo ./install.sh --admin nasadmin       # add --with-nfs to also enable NFS
 
 Then open `https://<host-ip>:9090`, log in as your admin user, and create your
 first share + users from the UI. See [`docs/post-install.md`](docs/post-install.md).
+
+## Quick start — (B) Custom app
+
+The custom app is a Node/Express backend + React frontend, deployed as a single
+systemd service on port `8800`.
+
+```bash
+git clone https://github.com/thxraph/proxsyno.git
+cd proxsyno
+sudo ./install-app.sh                     # add --files-root /mnt/raid --port 8800 etc.
+```
+
+This installs Node.js 20 + build deps, copies the repo to `/opt/proxsyno`, builds
+both halves, writes `/etc/proxsyno/proxsyno.env` (with a generated JWT secret), and
+enables the `proxsyno` systemd service.
+
+Then open `http://<host-ip>:8800` and log in as a user in the `sudo` group (**not
+root** — root cannot log in). Create one first if needed:
+
+```bash
+sudo adduser nasadmin && sudo usermod -aG sudo nasadmin
+```
+
+Useful flags: `--files-root <path>` (file-browser jail, default `/mnt`),
+`--port <n>` (default `8800`), `--admin-group <grp>` (default `sudo`), `--yes`.
+
+Manage it like any service: `systemctl status proxsyno`, `journalctl -u proxsyno -f`.
+
+> **MVP serves plain HTTP.** Put it behind a TLS reverse proxy before exposing it
+> beyond your LAN — see [`docs/roadmap.md`](docs/roadmap.md).
+
+### Developing the app
+
+```bash
+make install     # npm deps for app/server + app/web
+make build       # build both (-> app/*/dist)
+make dev         # prints how to run the two dev servers (backend :8800, Vite :5173)
+```
+
+See [`docs/architecture.md`](docs/architecture.md) for how the app is wired and
+[`SPEC.md`](SPEC.md) for the API contract.
 
 > **Why not `curl | bash`?** Because this installs third-party packages that run
 > code as root. Clone it, read `install.sh` (it's short), then run it. The plugin

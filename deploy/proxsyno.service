@@ -1,0 +1,48 @@
+[Unit]
+Description=proxsyno — Synology-DSM-style NAS manager for Proxmox/Debian
+Documentation=https://github.com/thxraph/proxsyno
+# Need the network up so we can bind and so name resolution works.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/proxsyno
+EnvironmentFile=/etc/proxsyno/proxsyno.env
+ExecStart=/usr/bin/node /opt/proxsyno/app/server/dist/index.js
+Restart=on-failure
+RestartSec=3
+
+# --- Why User=root ---------------------------------------------------------
+# proxsyno manages the host directly: it calls useradd/usermod/passwd, runs
+# smbpasswd, edits /etc/samba/smb.conf and /etc/exports, reloads smbd/nfs, and
+# reads SMART data via smartctl. All of that needs real root. There is no
+# unprivileged user that can do this set of operations, so the service runs as
+# root by design. See docs/architecture.md for the security trade-off.
+User=root
+Group=root
+
+# --- Hardening (constrained by the need to be root + write /etc) ------------
+# NoNewPrivileges MUST stay false: the app shells out to setuid helpers like
+# passwd/smbpasswd, which require gaining privileges. Setting it true would
+# break user/Samba password management.
+NoNewPrivileges=false
+
+# These are still safe to keep on — they don't conflict with managing users,
+# Samba, or reading SMART:
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=false
+# ^ false on purpose: passwd/smbpasswd are setuid; restricting SUID would break them.
+
+# Filesystem stays writable: the app edits /etc/samba, /etc/exports, /etc/passwd,
+# manages home dirs, and browses FILES_ROOT (default /mnt). So ProtectSystem and
+# ProtectHome are intentionally NOT enabled here.
+
+# Logs go to the journal: journalctl -u proxsyno -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=proxsyno
+
+[Install]
+WantedBy=multi-user.target
