@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
@@ -34,7 +34,10 @@ import { FormField } from '../components/FormField';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { EmptyState, ErrorState, LoadingState } from '../components/states';
 import { ProgressBar } from '../components/ProgressBar';
-import { Terminal } from '../components/Terminal';
+// xterm is heavy and only needed when a community-script console opens — code-split it.
+const Terminal = lazy(() =>
+  import('../components/Terminal').then((m) => ({ default: m.Terminal })),
+);
 import { Toggle } from './Shares';
 
 const GUESTS_REFETCH_MS = 5000;
@@ -95,11 +98,13 @@ export function Virtualization() {
             </button>
           }
         />
-        <Terminal
-          slug={activeScript.slug}
-          name={activeScript.name}
-          onClose={() => setActiveScript(null)}
-        />
+        <Suspense fallback={<div className="p-4 text-sm text-zinc-400">Loading terminal…</div>}>
+          <Terminal
+            slug={activeScript.slug}
+            name={activeScript.name}
+            onClose={() => setActiveScript(null)}
+          />
+        </Suspense>
       </div>
     );
   }

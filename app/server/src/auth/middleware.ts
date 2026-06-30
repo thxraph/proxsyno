@@ -33,11 +33,3 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
   next();
 }
 
-/** Verify the authenticated user is still in the admin group. */
-export function requireAdmin(req: Request, _res: Response, next: NextFunction): void {
-  if (!req.user?.isAdmin) {
-    next(ApiError.forbidden("Admin privileges required"));
-    return;
-  }
-  next();
-}

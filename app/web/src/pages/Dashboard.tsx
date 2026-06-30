@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { useWindows } from '../components/desktop/windowManager';
 import {
   Activity,
   ArrowDownToLine,
@@ -54,6 +54,7 @@ function Sparkline({ values, className }: { values: number[]; className?: string
 }
 
 export function Dashboard() {
+  const { open } = useWindows();
   const { sample, history, status } = useSystemWs();
 
   const systemQ = useQuery({
@@ -189,9 +190,13 @@ export function Dashboard() {
             <h2 className="flex items-center gap-2 font-semibold text-slate-900 dark:text-slate-50">
               <Database className="h-4 w-4 text-slate-400" /> ZFS pools
             </h2>
-            <Link to="/storage" className="text-sm font-medium text-accent-600 hover:underline">
+            <button
+              type="button"
+              onClick={() => open('storage', { title: 'Storage', w: 960, h: 660 })}
+              className="text-sm font-medium text-accent-400 hover:underline"
+            >
               View storage
-            </Link>
+            </button>
           </div>
 
           {zfsQ.isLoading ? (
@@ -222,10 +227,10 @@ export function Dashboard() {
         <div className="card p-5">
           <h2 className="mb-4 font-semibold text-slate-900 dark:text-slate-50">Quick links</h2>
           <div className="space-y-2">
-            <QuickLink to="/storage" icon={HardDrive} label="Disks & SMART" />
-            <QuickLink to="/shares" icon={Network} label="SMB & NFS shares" />
-            <QuickLink to="/users" icon={Cpu} label="Users & groups" />
-            <QuickLink to="/files" icon={Database} label="File browser" />
+            <QuickLink appKey="storage" title="Storage" w={960} h={660} icon={HardDrive} label="Disks & SMART" />
+            <QuickLink appKey="shares" title="Shares" w={900} h={600} icon={Network} label="SMB & NFS shares" />
+            <QuickLink appKey="users" title="Users" w={880} h={600} icon={Cpu} label="Users & groups" />
+            <QuickLink appKey="files" title="Files" w={1000} h={680} icon={Database} label="File browser" />
           </div>
         </div>
       </div>
@@ -234,21 +239,29 @@ export function Dashboard() {
 }
 
 function QuickLink({
-  to,
+  appKey,
+  title,
+  w,
+  h,
   icon: Icon,
   label,
 }: {
-  to: string;
+  appKey: string;
+  title: string;
+  w: number;
+  h: number;
   icon: typeof HardDrive;
   label: string;
 }) {
+  const { open } = useWindows();
   return (
-    <Link
-      to={to}
-      className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:border-accent-300 hover:bg-accent-50 dark:border-slate-800 dark:text-slate-200 dark:hover:border-accent-500/40 dark:hover:bg-accent-500/10"
+    <button
+      type="button"
+      onClick={() => open(appKey, { title, w, h })}
+      className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:bg-accent-500/10 hover:text-accent-300"
     >
-      <Icon className="h-4 w-4 text-slate-400" />
+      <Icon className="h-4 w-4 text-zinc-400" />
       {label}
-    </Link>
+    </button>
   );
 }

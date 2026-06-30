@@ -148,16 +148,3 @@ function handleExecError(
   throw new CommandError(file, args, exit, stdout, stderr);
 }
 
-/** True if the named binary exists on PATH. Used to degrade gracefully. */
-export async function commandExists(file: string): Promise<boolean> {
-  try {
-    // The script is a fixed string; `file` is passed as $0 (argv), never
-    // interpolated. `command -v` exits non-zero when the binary is absent.
-    const res = await run("sh", ["-c", 'command -v "$0" >/dev/null 2>&1', file], {
-      allowNonZeroExit: true,
-    });
-    return res.code === 0;
-  } catch {
-    return false;
-  }
-}

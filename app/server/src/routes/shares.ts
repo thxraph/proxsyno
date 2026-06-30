@@ -21,7 +21,11 @@ export const sharesRouter = Router();
 const smbBodySchema = z.object({
   name: nameSchema,
   path: pathSchema,
-  comment: z.string().max(256).optional(),
+  comment: z
+    .string()
+    .max(256)
+    .regex(/^[^\0\n\r]*$/, "no control characters")
+    .optional(),
   readOnly: z.boolean().optional(),
   guestOk: z.boolean().optional(),
   validUsers: z.array(nameSchema).max(256).optional(),

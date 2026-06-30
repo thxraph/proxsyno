@@ -42,11 +42,6 @@ export function formatDate(ms: number | undefined | null): string {
   }
 }
 
-export function formatPercent(value: number | undefined | null, decimals = 0): string {
-  if (value === undefined || value === null || Number.isNaN(value)) return '—';
-  return `${value.toFixed(decimals)}%`;
-}
-
 // Tiny classname combiner (avoids a clsx dependency).
 export function cx(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ');

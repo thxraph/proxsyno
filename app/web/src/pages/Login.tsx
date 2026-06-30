@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { HardDrive, Loader2, Lock, User as UserIcon } from 'lucide-react';
 import { ApiError } from '../api/client';
 import { useLogin, useMe } from '../hooks/useAuth';
-import { ThemeToggle } from '../components/ThemeToggle';
 
 function nextTarget(): string {
   const params = new URLSearchParams(window.location.search);
@@ -44,11 +43,7 @@ export function Login() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center bg-slate-100 px-4 dark:bg-slate-950">
-      <div className="absolute right-4 top-4">
-        <ThemeToggle />
-      </div>
-
+    <div className="relative flex min-h-screen items-center justify-center bg-zinc-950 px-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center gap-3 text-center">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent-600 text-white shadow-lg">

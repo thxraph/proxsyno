@@ -17,6 +17,7 @@ interface SessionClaims extends SessionUser {
 
 export function signSession(user: SessionUser): string {
   return jwt.sign(user, config.jwtSecret, {
+    algorithm: "HS256",
     expiresIn: config.sessionTtlSec,
     issuer: "proxsyno",
     subject: user.name,
@@ -26,7 +27,11 @@ export function signSession(user: SessionUser): string {
 /** Verify a token; returns the user payload or null if invalid/expired. */
 export function verifySession(token: string): SessionUser | null {
   try {
-    const decoded = jwt.verify(token, config.jwtSecret, { issuer: "proxsyno" }) as SessionClaims;
+    // Pin the algorithm so a forged token can't downgrade to "none"/another alg.
+    const decoded = jwt.verify(token, config.jwtSecret, {
+      issuer: "proxsyno",
+      algorithms: ["HS256"],
+    }) as SessionClaims;
     if (typeof decoded.name !== "string" || !Array.isArray(decoded.groups)) return null;
     return { name: decoded.name, groups: decoded.groups, isAdmin: Boolean(decoded.isAdmin) };
   } catch {

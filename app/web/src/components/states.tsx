@@ -55,26 +55,3 @@ export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () =>
   );
 }
 
-// Convenience wrapper for react-query states around a card-shaped section.
-export function QueryBoundary({
-  isLoading,
-  isError,
-  error,
-  isEmpty,
-  emptyProps,
-  onRetry,
-  children,
-}: {
-  isLoading: boolean;
-  isError: boolean;
-  error?: unknown;
-  isEmpty?: boolean;
-  emptyProps?: Parameters<typeof EmptyState>[0];
-  onRetry?: () => void;
-  children: ReactNode;
-}) {
-  if (isLoading) return <LoadingState />;
-  if (isError) return <ErrorState error={error} onRetry={onRetry} />;
-  if (isEmpty) return <EmptyState {...(emptyProps ?? {})} />;
-  return <>{children}</>;
-}

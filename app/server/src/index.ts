@@ -36,8 +36,9 @@ import { errorHandler, notFoundHandler } from "./util/errors.js";
 
 const app = express();
 
-// We sit behind a reverse proxy in production; trust X-Forwarded-* for secure cookies.
-app.set("trust proxy", true);
+// In production we sit behind ONE reverse proxy; trust a single hop's
+// X-Forwarded-* (not "true", which would trust forwarded headers from anyone).
+app.set("trust proxy", config.isProd ? 1 : false);
 app.disable("x-powered-by");
 
 // Body parsers with conservative limits (file uploads bypass these via multer).
@@ -95,6 +96,36 @@ const wss = new WebSocketServer({ noServer: true });
 // Second endpoint: the interactive Proxmox community-script console PTY.
 const consoleWss = new WebSocketServer({ noServer: true });
 
+// --- WebSocket heartbeat ---------------------------------------------------
+// Half-open TCP connections (client crash, NAT timeout) never fire 'close', so
+// without a heartbeat the system sampler interval — and, worse, a root PTY —
+// would leak forever. Ping every 30s; terminate any socket that missed the
+// previous pong (terminate() fires 'close', which runs the existing cleanup).
+const wsAlive = new WeakMap<WebSocket, boolean>();
+function markAlive(ws: WebSocket): void {
+  wsAlive.set(ws, true);
+  ws.on("pong", () => wsAlive.set(ws, true));
+}
+function setupHeartbeat(server: WebSocketServer): void {
+  const interval = setInterval(() => {
+    server.clients.forEach((ws) => {
+      if (wsAlive.get(ws) === false) {
+        ws.terminate();
+        return;
+      }
+      wsAlive.set(ws, false);
+      try {
+        ws.ping();
+      } catch {
+        /* socket closing */
+      }
+    });
+  }, 30_000);
+  server.on("close", () => clearInterval(interval));
+}
+setupHeartbeat(wss);
+setupHeartbeat(consoleWss);
+
 function parseCookieHeader(header: string | undefined): Record<string, string> {
   const out: Record<string, string> = {};
   if (!header) return out;
@@ -135,6 +166,7 @@ server.on("upgrade", (req, socket, head) => {
 });
 
 wss.on("connection", (ws: WebSocket) => {
+  markAlive(ws);
   const sampler = new SystemSampler();
   let alive = true;
 
@@ -177,6 +209,7 @@ function clampDim(n: unknown): number | null {
 }
 
 consoleWss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
+  markAlive(ws);
   void (async () => {
     const url = new URL(req.url ?? "", "http://localhost");
     const slug = url.searchParams.get("script") ?? "";

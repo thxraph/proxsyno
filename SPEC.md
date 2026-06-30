@@ -275,3 +275,22 @@ wrapper. The docker command is itself an **argv array** (e.g.
 ## Out of scope (MVP, leave TODOs)
 docker compose, exec-into-container terminal, live log streaming (use tail), image
 pull/build UI, registry auth, swarm/k8s.
+
+---
+
+# Addendum: DSM-style desktop shell
+
+Replace the sidebar+routed-pages layout with a **desktop environment** (Synology
+DSM feel) using the dark palette from docs/ui-conventions.md.
+
+- **Auth/routing:** `/login` stays its own route. Everything else renders the
+  **Desktop** (single authenticated surface). Feature "pages" are no longer routes —
+  they are **apps** opened as windows. Keep react-router only for login vs desktop.
+- **Desktop:** full-viewport `bg-zinc-950` wallpaper (subtle gradient/texture ok),
+  a grid of **desktop icons** (top-left) that launch apps, the window layer, and the
+  taskbar.
+- **Window manager** (state in a context/store): track `{id, appKey, title, x, y, w, h, z, minimized, maximized, focused}`; ops open/close/focus/move/resize/minimize/maximize/restore. New windows cascade; clicking focuses + raises z; one window focused at a time. Persist nothing (in-memory) for MVP.
+- **AppWindow:** `bg-zinc-900` frame, titlebar (app icon + title + minimize/maximize/close buttons, orange focus accent on the active window), **draggable by titlebar**, **resizable** from edges/corners (min size guard), double-click titlebar = maximize toggle. Body hosts the app component, scrolls internally.
+- **Taskbar** (bottom): a **launcher** ("apps" button → menu/grid of all apps), a button per open window (click = focus or restore; shows minimized state), a live mini CPU/mem readout (reuse the /ws/system hook), the logged-in user + logout, and a clock.
+- **App registry:** `{ key, title, icon (lucide), component, defaultSize }` for Dashboard, Storage, Shares, Users, Files, Virtualization. **Virtualization is included only when `GET /api/proxmox/available` → isProxmox** (carry over the existing gate). Docker app will register here later.
+- Reuse the existing page components as window bodies unchanged where possible; drop the now-unused AppShell/Sidebar/TopBar. Comply with docs/ui-conventions.md (no double borders, orange accent, icons, no native dialogs).

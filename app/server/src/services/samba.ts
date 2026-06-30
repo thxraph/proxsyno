@@ -9,7 +9,6 @@
  * `testparm -s` and rolled back to the previous content on failure.
  */
 import { promises as fs } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
 import { ApiError } from "../util/errors.js";
@@ -319,4 +318,3 @@ export async function listShares(): Promise<SharesResponse> {
 }
 
 // Exposed for potential diagnostics/tests.
-export const _internal = { renderSmbBlock, renderExportLine, MARK_START, MARK_END, hostname: os.hostname() };
