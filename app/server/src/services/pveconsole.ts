@@ -142,12 +142,17 @@ export async function createVncProxy(params: ConsoleParams): Promise<VncProxy> {
   const data = await pveApiPost(`/api2/json/nodes/${node}/${type}/${vmid}/vncproxy`, auth);
 
   const port = Number(data.port);
+  // The VNC password the client sends as RFB credentials. qemu returns a
+  // dedicated 8-char `password` (the ticket is only password-prefixed by luck);
+  // LXC returns none, and its vncterm authenticates against the `ticket`.
+  const password = typeof data.password === "string" ? data.password : "";
   const ticket = typeof data.ticket === "string" ? data.ticket : "";
+  const vncPassword = password || ticket;
   if (!Number.isInteger(port) || port < VNC_PORT_MIN || port > VNC_PORT_MAX) {
     throw new Error(`vncproxy returned an out-of-range port: ${String(data.port)}`);
   }
-  if (!ticket) throw new Error("vncproxy returned no ticket");
-  return { port, ticket };
+  if (!vncPassword) throw new Error("vncproxy returned no ticket/password");
+  return { port, ticket: vncPassword };
 }
 
 // ---------------------------------------------------------------------------
