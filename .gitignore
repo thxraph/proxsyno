@@ -9,3 +9,11 @@ tmp/
 # editor noise
 *.swp
 .DS_Store
+
+# local secrets — real env files & key material are NEVER committed
+# (the *.example templates, which hold only placeholders, ARE tracked)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
