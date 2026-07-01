@@ -1,10 +1,32 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Clock, Globe, Save } from 'lucide-react';
+import { Clock, Globe, LocateFixed, Save } from 'lucide-react';
 import { pve, ApiError } from '../../api/client';
 import { FormField } from '../../components/FormField';
 import { ErrorState, LoadingState } from '../../components/states';
 import { str, type PveObj } from './util';
+
+// The full IANA timezone list, straight from the browser. supportedValuesOf is
+// in every evergreen browser (Chrome 99+, Firefox 93+, Safari 15.4+); fall back
+// to a tiny list on the off chance it's missing.
+const TIMEZONES: string[] = (() => {
+  const intl = Intl as unknown as { supportedValuesOf?: (key: string) => string[] };
+  try {
+    if (typeof intl.supportedValuesOf === 'function') return intl.supportedValuesOf('timeZone');
+  } catch {
+    /* fall through */
+  }
+  return ['UTC', 'Europe/Paris', 'Europe/London', 'America/New_York', 'America/Los_Angeles'];
+})();
+
+/** The browser's current timezone, e.g. "Europe/Paris". */
+function detectTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
 
 export function DnsTimeTab({ node }: { node: string }) {
   return (
@@ -109,6 +131,13 @@ function TimeCard({ node }: { node: string }) {
   const localtime = q.data ? Number(q.data.localtime) : undefined;
   const localStr = localtime ? new Date(localtime * 1000).toLocaleString() : '—';
 
+  // Ensure the node's current value is always selectable, even if it somehow
+  // isn't in the browser's IANA list.
+  const options = useMemo(
+    () => (timezone && !TIMEZONES.includes(timezone) ? [timezone, ...TIMEZONES] : TIMEZONES),
+    [timezone],
+  );
+
   return (
     <div className="card p-4">
       <CardHeader icon={Clock} title="Time" />
@@ -122,8 +151,31 @@ function TimeCard({ node }: { node: string }) {
           <p className="mb-3 text-sm text-zinc-400">
             Node local time: <span className="font-mono text-zinc-200">{localStr}</span>
           </p>
-          <FormField label="Timezone" hint="An IANA timezone name, e.g. Europe/Paris or UTC.">
-            <input className="input" value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="UTC" />
+          <FormField label="Timezone" hint="Pick an IANA timezone, or autodetect this browser's.">
+            <div className="flex gap-2">
+              <select
+                className="input flex-1"
+                value={timezone}
+                onChange={(e) => setTimezone(e.target.value)}
+              >
+                {options.map((tz) => (
+                  <option key={tz} value={tz}>
+                    {tz}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="btn-secondary shrink-0"
+                onClick={() => {
+                  setError(null);
+                  setTimezone(detectTimezone());
+                }}
+                title="Set to this browser's timezone"
+              >
+                <LocateFixed className="h-4 w-4" aria-hidden /> Autodetect
+              </button>
+            </div>
           </FormField>
           <button
             className="btn-primary"
