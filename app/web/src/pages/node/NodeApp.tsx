@@ -8,6 +8,7 @@ import {
   Package,
   Server,
   Shield,
+  TerminalSquare,
   Wrench,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -23,6 +24,7 @@ import { ServicesTab } from './ServicesTab';
 import { DisksTab } from './DisksTab';
 import { TasksTab } from './TasksTab';
 import { FirewallTab } from './FirewallTab';
+import { HostShellTab } from './HostShellTab';
 
 // `/api/proxmox/available` is NOT wrapped in a `{ data }` envelope.
 interface ProxmoxAvailable {
@@ -46,6 +48,7 @@ const TABS: TabDef[] = [
   { key: 'disks', label: 'Disks', icon: HardDrive, render: (n) => <DisksTab node={n} /> },
   { key: 'tasks', label: 'Tasks', icon: ListChecks, render: (n) => <TasksTab node={n} /> },
   { key: 'firewall', label: 'Firewall', icon: Shield, render: (n) => <FirewallTab node={n} /> },
+  { key: 'shell', label: 'Shell', icon: TerminalSquare, render: () => <HostShellTab /> },
 ];
 
 export function NodeApp() {

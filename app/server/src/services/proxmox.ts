@@ -708,3 +708,19 @@ export function spawnConsolePty(slug: string, cols: number, rows: number): Conso
     env: { ...process.env, TERM: "xterm-color" },
   });
 }
+
+/**
+ * Spawn an interactive login shell ON THE HOST — the equivalent of Proxmox's
+ * node Shell. The server runs as root, so this is a root shell. No user input
+ * reaches the spawn (fixed argv); the PTY carries keystrokes over the socket.
+ */
+export function spawnHostShell(cols: number, rows: number): ConsolePty {
+  const spawn = getPtySpawn();
+  return spawn("bash", ["-l"], {
+    name: "xterm-color",
+    cols,
+    rows,
+    cwd: "/root",
+    env: { ...process.env, TERM: "xterm-color" },
+  });
+}

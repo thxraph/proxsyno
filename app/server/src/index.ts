@@ -33,6 +33,7 @@ import { SystemSampler } from "./services/system.js";
 import {
   isScriptInCatalog,
   spawnConsolePty,
+  spawnHostShell,
   SCRIPT_SLUG_REGEX,
   type ConsolePty,
 } from "./services/proxmox.js";
@@ -121,6 +122,8 @@ const wss = new WebSocketServer({ noServer: true });
 const consoleWss = new WebSocketServer({ noServer: true });
 // Third endpoint: the per-guest VNC console (qemu/lxc) bridged to noVNC.
 const pveConsoleWss = new WebSocketServer({ noServer: true });
+// Fourth endpoint: a root login shell PTY on the host itself (node Shell).
+const hostShellWss = new WebSocketServer({ noServer: true });
 
 // --- WebSocket heartbeat ---------------------------------------------------
 // Half-open TCP connections (client crash, NAT timeout) never fire 'close', so
@@ -152,6 +155,7 @@ function setupHeartbeat(server: WebSocketServer): void {
 setupHeartbeat(wss);
 setupHeartbeat(consoleWss);
 setupHeartbeat(pveConsoleWss);
+setupHeartbeat(hostShellWss);
 
 function parseCookieHeader(header: string | undefined): Record<string, string> {
   const out: Record<string, string> = {};
@@ -172,7 +176,8 @@ server.on("upgrade", (req, socket, head) => {
   const isSystem = pathname === "/ws/system";
   const isConsole = pathname === "/ws/proxmox/console";
   const isPveConsole = pathname === "/ws/pve/console";
-  if (!isSystem && !isConsole && !isPveConsole) {
+  const isHostShell = pathname === "/ws/host/shell";
+  if (!isSystem && !isConsole && !isPveConsole && !isHostShell) {
     socket.destroy();
     return;
   }
@@ -180,6 +185,12 @@ server.on("upgrade", (req, socket, head) => {
   // Reject cross-origin WebSocket handshakes (cross-site WS hijacking) before
   // we even look at the cookie.
   if (!isSameOrigin(req.headers.origin, req.headers.referer, req.headers.host)) {
+    if (isPveConsole) {
+      // eslint-disable-next-line no-console
+      console.log(
+        `[proxsyno][console] upgrade REJECTED cross-origin: origin=${req.headers.origin} host=${req.headers.host}`,
+      );
+    }
     socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
     socket.destroy();
     return;
@@ -190,12 +201,28 @@ server.on("upgrade", (req, socket, head) => {
   const token = cookies[config.cookieName];
   const user = token ? verifySession(token) : null;
   if (!user) {
+    if (isPveConsole) {
+      // eslint-disable-next-line no-console
+      console.log(
+        `[proxsyno][console] upgrade REJECTED auth: cookie present=${!!token}, valid=${!!user}`,
+      );
+    }
     socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
     socket.destroy();
     return;
   }
+  if (isPveConsole) {
+    // eslint-disable-next-line no-console
+    console.log(`[proxsyno][console] upgrade OK user=${user.name} url=${req.url}`);
+  }
 
-  const target = isPveConsole ? pveConsoleWss : isConsole ? consoleWss : wss;
+  const target = isHostShell
+    ? hostShellWss
+    : isPveConsole
+      ? pveConsoleWss
+      : isConsole
+        ? consoleWss
+        : wss;
   target.handleUpgrade(req, socket, head, (ws) => {
     target.emit("connection", ws, req);
   });
@@ -244,6 +271,48 @@ function clampDim(n: unknown): number | null {
   return typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= 1000 ? n : null;
 }
 
+// Bridge a PTY to a ws using the SPEC JSON protocol: pty output/exit → ws,
+// ws input/resize → pty. Kills the PTY exactly once on close/error/exit.
+function bridgePtyToWs(ws: WebSocket, pty: ConsolePty): void {
+  let killed = false;
+  const cleanup = (): void => {
+    if (killed) return;
+    killed = true;
+    try {
+      pty.kill();
+    } catch {
+      /* already gone */
+    }
+  };
+
+  pty.onData((data) => sendJson(ws, { type: "output", data }));
+  pty.onExit(({ exitCode }) => {
+    sendJson(ws, { type: "exit", code: exitCode });
+    ws.close();
+  });
+
+  ws.on("message", (raw) => {
+    let msg: unknown;
+    try {
+      msg = JSON.parse(raw.toString());
+    } catch {
+      return; // ignore non-JSON frames
+    }
+    if (!msg || typeof msg !== "object") return;
+    const m = msg as { type?: unknown; data?: unknown; cols?: unknown; rows?: unknown };
+    if (m.type === "input" && typeof m.data === "string") {
+      pty.write(m.data);
+    } else if (m.type === "resize") {
+      const cols = clampDim(m.cols);
+      const rows = clampDim(m.rows);
+      if (cols && rows) pty.resize(cols, rows);
+    }
+  });
+
+  ws.on("close", cleanup);
+  ws.on("error", cleanup);
+}
+
 consoleWss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
   markAlive(ws);
   void (async () => {
@@ -269,43 +338,7 @@ consoleWss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
       return;
     }
 
-    let killed = false;
-    const cleanup = (): void => {
-      if (killed) return;
-      killed = true;
-      try {
-        pty.kill();
-      } catch {
-        /* already gone */
-      }
-    };
-
-    pty.onData((data) => sendJson(ws, { type: "output", data }));
-    pty.onExit(({ exitCode }) => {
-      sendJson(ws, { type: "exit", code: exitCode });
-      ws.close();
-    });
-
-    ws.on("message", (raw) => {
-      let msg: unknown;
-      try {
-        msg = JSON.parse(raw.toString());
-      } catch {
-        return; // ignore non-JSON frames
-      }
-      if (!msg || typeof msg !== "object") return;
-      const m = msg as { type?: unknown; data?: unknown; cols?: unknown; rows?: unknown };
-      if (m.type === "input" && typeof m.data === "string") {
-        pty.write(m.data);
-      } else if (m.type === "resize") {
-        const cols = clampDim(m.cols);
-        const rows = clampDim(m.rows);
-        if (cols && rows) pty.resize(cols, rows);
-      }
-    });
-
-    ws.on("close", cleanup);
-    ws.on("error", cleanup);
+    bridgePtyToWs(ws, pty);
   })().catch((err) => {
     sendJson(ws, {
       type: "error",
@@ -313,6 +346,23 @@ consoleWss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
     });
     ws.close();
   });
+});
+
+// Host shell (node Shell) — a root login shell PTY on the host.
+hostShellWss.on("connection", (ws: WebSocket) => {
+  markAlive(ws);
+  let pty: ConsolePty;
+  try {
+    pty = spawnHostShell(80, 24);
+  } catch (err) {
+    sendJson(ws, {
+      type: "error",
+      message: `Failed to start host shell: ${err instanceof Error ? err.message : String(err)}`,
+    });
+    ws.close();
+    return;
+  }
+  bridgePtyToWs(ws, pty);
 });
 
 // ---------------------------------------------------------------------------
@@ -327,6 +377,12 @@ pveConsoleWss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
   const url = new URL(req.url ?? "", "http://localhost");
   const token = url.searchParams.get("token") ?? "";
   const proxy = consumeProxy(token);
+  // eslint-disable-next-line no-console
+  console.log(
+    `[proxsyno][console] ws connection token=${token.slice(0, 8)}… proxy=${
+      proxy ? `FOUND port ${proxy.port}` : "NOT FOUND (expired/invalid/reused)"
+    }`,
+  );
   if (!proxy) {
     ws.close(1008, "invalid or expired console token");
     return;
@@ -354,6 +410,7 @@ for (const sig of ["SIGTERM", "SIGINT"] as const) {
     wss.clients.forEach((c) => c.close());
     consoleWss.clients.forEach((c) => c.close());
     pveConsoleWss.clients.forEach((c) => c.close());
+    hostShellWss.clients.forEach((c) => c.close());
     server.close(() => process.exit(0));
     // Force-exit if connections linger.
     setTimeout(() => process.exit(0), 5000).unref();
