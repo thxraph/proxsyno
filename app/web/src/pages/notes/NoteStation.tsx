@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Book,
+  ChevronLeft,
   FileText,
   NotebookPen,
   Plus,
@@ -10,6 +11,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../api/client';
 import { cx, formatDate } from '../../lib/format';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { ErrorState, LoadingState } from '../../components/states';
 import { NoteEditor } from './NoteEditor';
 import type { Note, NotesIndex, NoteSummary } from './types';
@@ -18,6 +20,7 @@ import type { Note, NotesIndex, NoteSummary } from './types';
 // notebook name is always a string.
 export function NoteStation() {
   const qc = useQueryClient();
+  const isMobile = useIsMobile();
   const [search, setSearch] = useState('');
   const [notebook, setNotebook] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -62,8 +65,8 @@ export function NoteStation() {
 
   return (
     <div className="flex h-full min-h-0 gap-px text-sm">
-      {/* Pane 1 — notebooks */}
-      <div className="card flex w-48 shrink-0 flex-col">
+      {/* Pane 1 — notebooks (hidden on mobile; filter moves into the list pane) */}
+      <div className={cx('card w-48 shrink-0 flex-col', isMobile ? 'hidden' : 'flex')}>
         <div className="flex items-center gap-2 border-b border-zinc-800 px-3 py-2.5 text-zinc-300">
           <NotebookPen className="h-4 w-4 text-orange-400" aria-hidden />
           <span className="font-semibold">Notebooks</span>
@@ -89,8 +92,17 @@ export function NoteStation() {
         </div>
       </div>
 
-      {/* Pane 2 — notes list */}
-      <div className="card flex w-64 shrink-0 flex-col">
+      {/* Pane 2 — notes list (full-width on mobile; hidden once a note opens) */}
+      <div
+        className={cx(
+          'card',
+          isMobile
+            ? selectedId
+              ? 'hidden'
+              : 'flex w-full flex-1 flex-col'
+            : 'flex w-64 shrink-0 flex-col',
+        )}
+      >
         <div className="flex items-center gap-2 border-b border-zinc-800 p-2">
           <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-2">
             <Search className="h-4 w-4 shrink-0 text-zinc-500" aria-hidden />
@@ -110,6 +122,29 @@ export function NoteStation() {
             <Plus className="h-4 w-4" aria-hidden />
           </button>
         </div>
+
+        {/* Mobile notebook filter (replaces the hidden sidebar). */}
+        {isMobile && (
+          <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-zinc-800 p-2">
+            {[{ key: null, label: 'All' }, ...notebooks.map((nb) => ({ key: nb, label: nb }))].map(
+              (c) => (
+                <button
+                  key={c.key ?? '__all__'}
+                  type="button"
+                  onClick={() => setNotebook(c.key)}
+                  className={cx(
+                    'shrink-0 rounded-full px-3 py-1 text-xs transition-colors',
+                    notebook === c.key
+                      ? 'bg-orange-500/15 text-orange-300 ring-1 ring-orange-500/40'
+                      : 'bg-zinc-800 text-zinc-300',
+                  )}
+                >
+                  {c.label}
+                </button>
+              ),
+            )}
+          </div>
+        )}
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {indexQ.isLoading ? (
@@ -137,8 +172,26 @@ export function NoteStation() {
         </div>
       </div>
 
-      {/* Pane 3 — editor */}
-      <div className="card flex min-w-0 flex-1 flex-col">
+      {/* Pane 3 — editor (full-screen on mobile; hidden until a note opens) */}
+      <div
+        className={cx(
+          'card min-w-0',
+          isMobile
+            ? selectedId
+              ? 'flex w-full flex-1 flex-col'
+              : 'hidden'
+            : 'flex flex-1 flex-col',
+        )}
+      >
+        {isMobile && selectedId && (
+          <button
+            type="button"
+            onClick={() => setSelectedId(null)}
+            className="flex h-11 shrink-0 items-center gap-1 border-b border-zinc-800 px-2 text-sm text-zinc-300 active:bg-zinc-800"
+          >
+            <ChevronLeft className="h-5 w-5" aria-hidden /> Notes
+          </button>
+        )}
         {!selectedId ? (
           <EmptyEditor />
         ) : noteQ.isLoading ? (
