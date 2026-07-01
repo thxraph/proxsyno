@@ -299,6 +299,16 @@ function bridgePtyToWs(ws: WebSocket, pty: ConsolePty): void {
 
 consoleWss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
   markAlive(ws);
+  // Attach these synchronously: a client abort during the catalog check below
+  // would otherwise raise an unhandled 'error' event (crashing the process),
+  // and a close during it would leave the root PTY spawned with no reader.
+  let closed = false;
+  ws.on("close", () => {
+    closed = true;
+  });
+  ws.on("error", () => {
+    /* swallowed — 'close' follows and sets the flag */
+  });
   void (async () => {
     const url = new URL(req.url ?? "", "http://localhost");
     const slug = url.searchParams.get("script") ?? "";
@@ -309,6 +319,7 @@ consoleWss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
       ws.close();
       return;
     }
+    if (closed) return; // client went away while we awaited the catalog
 
     let pty: ConsolePty;
     try {

@@ -3,38 +3,11 @@ import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { RefreshCw, TerminalSquare } from 'lucide-react';
+import { wsUrl } from '../../api/client';
+import { XTERM_THEME } from '../../lib/xtermTheme';
 import { Badge } from '../../components/Badge';
 
 type Status = 'connecting' | 'open' | 'closed';
-
-// Dark xterm theme, matching the community-script Terminal.
-const THEME = {
-  background: '#0b1120',
-  foreground: '#e2e8f0',
-  cursor: '#38bdf8',
-  selectionBackground: '#334155',
-  black: '#1e293b',
-  red: '#f87171',
-  green: '#34d399',
-  yellow: '#fbbf24',
-  blue: '#60a5fa',
-  magenta: '#c084fc',
-  cyan: '#22d3ee',
-  white: '#e2e8f0',
-  brightBlack: '#475569',
-  brightRed: '#fca5a5',
-  brightGreen: '#6ee7b7',
-  brightYellow: '#fcd34d',
-  brightBlue: '#93c5fd',
-  brightMagenta: '#d8b4fe',
-  brightCyan: '#67e8f9',
-  brightWhite: '#f8fafc',
-};
-
-function wsUrl(path: string): string {
-  const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  return `${proto}://${window.location.host}${path}`;
-}
 
 // A root login shell on the host itself — the equivalent of Proxmox's node Shell.
 // Speaks the same JSON PTY protocol as the community-script Terminal, but against
@@ -55,7 +28,7 @@ export function HostShellTab() {
       fontSize: 13,
       fontFamily:
         'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
-      theme: THEME,
+      theme: XTERM_THEME,
       convertEol: true,
     });
     const fit = new FitAddon();
@@ -173,7 +146,7 @@ export function HostShellTab() {
       <div
         ref={containerRef}
         className="min-h-0 flex-1 p-2"
-        style={{ backgroundColor: THEME.background }}
+        style={{ backgroundColor: XTERM_THEME.background }}
       />
     </div>
   );

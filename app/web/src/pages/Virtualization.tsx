@@ -17,7 +17,7 @@ import {
   Square,
   Terminal as TerminalIcon,
 } from 'lucide-react';
-import { api, ApiError } from '../api/client';
+import { api, errMsg } from '../api/client';
 import type {
   Guest,
   GuestAction,
@@ -27,8 +27,10 @@ import type {
   ScriptMeta,
   VmCreateInput,
 } from '../lib/types';
-import { cx, formatBytes, formatUptime } from '../lib/format';
+import { capitalize, cx, formatBytes, formatUptime } from '../lib/format';
 import { PageHeader } from '../components/PageHeader';
+import { IconBtn } from '../components/IconBtn';
+import { SubmitError } from '../components/SubmitError';
 import { DataTable, type Column } from '../components/DataTable';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
@@ -258,12 +260,12 @@ function GuestsView({
       align: 'right',
       render: (g) => (
         <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-          <IconAction
+          <IconBtn
             title="Manage"
             onClick={() => openGuest(g)}
             icon={Settings2}
           />
-          <IconAction
+          <IconBtn
             title="Console"
             onClick={() => openGuest(g, 'console')}
             icon={TerminalIcon}
@@ -317,18 +319,18 @@ function GuestsView({
 
       <ConfirmDialog
         open={!!pendingAction}
-        title={pendingAction ? `${actionTitle(pendingAction.action)} guest` : ''}
+        title={pendingAction ? `${capitalize(pendingAction.action)} guest` : ''}
         message={
           pendingAction ? (
             <>
-              {actionTitle(pendingAction.action)} <strong>{pendingAction.guest.name}</strong> (
+              {capitalize(pendingAction.action)} <strong>{pendingAction.guest.name}</strong> (
               {pendingAction.guest.type === 'qemu' ? 'VM' : 'LXC'} {pendingAction.guest.vmid})?
             </>
           ) : (
             ''
           )
         }
-        confirmLabel={pendingAction ? actionTitle(pendingAction.action) : 'Confirm'}
+        confirmLabel={pendingAction ? capitalize(pendingAction.action) : 'Confirm'}
         busy={actionMut.isPending}
         onCancel={() => setPendingAction(null)}
         onConfirm={async () => {
@@ -339,10 +341,6 @@ function GuestsView({
       />
     </div>
   );
-}
-
-function actionTitle(a: GuestAction): string {
-  return a.charAt(0).toUpperCase() + a.slice(1);
 }
 
 function StatusBadge({ status }: { status: Guest['status'] }) {
@@ -365,19 +363,19 @@ function GuestActions({
     <div className="flex justify-end gap-1">
       {running ? (
         <>
-          <IconAction
+          <IconBtn
             title="Reboot"
             disabled={busy}
             onClick={() => onAction(guest, 'reboot')}
             icon={RotateCcw}
           />
-          <IconAction
+          <IconBtn
             title="Shutdown"
             disabled={busy}
             onClick={() => onAction(guest, 'shutdown')}
             icon={Power}
           />
-          <IconAction
+          <IconBtn
             title="Stop"
             disabled={busy}
             danger
@@ -386,7 +384,7 @@ function GuestActions({
           />
         </>
       ) : (
-        <IconAction
+        <IconBtn
           title="Start"
           disabled={busy}
           onClick={() => onAction(guest, 'start')}
@@ -394,36 +392,6 @@ function GuestActions({
         />
       )}
     </div>
-  );
-}
-
-function IconAction({
-  title,
-  icon: Icon,
-  onClick,
-  disabled,
-  danger,
-}: {
-  title: string;
-  icon: typeof Play;
-  onClick: () => void;
-  disabled?: boolean;
-  danger?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      title={title}
-      aria-label={title}
-      disabled={disabled}
-      onClick={onClick}
-      className={cx(
-        'btn-ghost h-8 w-8 p-0',
-        danger && 'text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10',
-      )}
-    >
-      <Icon className="h-4 w-4" />
-    </button>
   );
 }
 
@@ -500,14 +468,6 @@ function WizardTabButton({
   );
 }
 
-function SubmitError({ message }: { message: string }) {
-  return (
-    <div className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
-      {message}
-    </div>
-  );
-}
-
 // Storages capable of holding a given content type.
 function storagesFor(options: ProxmoxOptions, content: string) {
   return options.storages.filter((s) => s.content.includes(content));
@@ -536,7 +496,7 @@ function VmForm({ options, onClose }: { options: ProxmoxOptions; onClose: () => 
       qc.invalidateQueries({ queryKey: ['proxmox', 'guests'] });
       onClose();
     },
-    onError: (e) => setSubmitError(e instanceof ApiError ? e.message : 'Failed to create VM'),
+    onError: (e) => setSubmitError(errMsg(e, 'Failed to create VM')),
   });
 
   const validate = (): boolean => {
@@ -674,7 +634,7 @@ function LxcForm({ options, onClose }: { options: ProxmoxOptions; onClose: () =>
       qc.invalidateQueries({ queryKey: ['proxmox', 'guests'] });
       onClose();
     },
-    onError: (e) => setSubmitError(e instanceof ApiError ? e.message : 'Failed to create container'),
+    onError: (e) => setSubmitError(errMsg(e, 'Failed to create container')),
   });
 
   const validate = (): boolean => {

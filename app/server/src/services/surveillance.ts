@@ -79,18 +79,25 @@ async function frigateJson<T>(path: string): Promise<T> {
   return JSON.parse(body) as T;
 }
 
+/** Best-effort Frigate version; undefined on any failure. */
+async function readVersion(): Promise<string | undefined> {
+  try {
+    const res = await frigateRequest("/api/version", JSON_TIMEOUT_MS);
+    const text = (await readBody(res)).trim();
+    if (res.statusCode === 200 && text) return text;
+  } catch {
+    // version is best-effort; config alone proves availability.
+  }
+  return undefined;
+}
+
 /** Probe Frigate; never throws. {available:false} when the LXC is down. */
 export async function getStatus(): Promise<SurveillanceStatus> {
   try {
-    const cfg = await frigateJson<FrigateConfig>("/api/config");
-    let version: string | undefined;
-    try {
-      const res = await frigateRequest("/api/version", JSON_TIMEOUT_MS);
-      const text = (await readBody(res)).trim();
-      if (res.statusCode === 200 && text) version = text;
-    } catch {
-      // version is best-effort; config alone proves availability.
-    }
+    const [cfg, version] = await Promise.all([
+      frigateJson<FrigateConfig>("/api/config"),
+      readVersion(),
+    ]);
     return {
       available: true,
       version,

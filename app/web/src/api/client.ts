@@ -11,6 +11,18 @@ export class ApiError extends Error {
   }
 }
 
+export function errMsg(e: unknown, fallback = 'Request failed'): string {
+  if (e instanceof ApiError) return e.message;
+  if (e instanceof Error) return e.message;
+  return fallback;
+}
+
+// ws(s):// URL for a same-origin WebSocket path.
+export function wsUrl(path: string): string {
+  const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${proto}://${window.location.host}${path}`;
+}
+
 const BASE = '/api';
 
 function redirectToLogin() {

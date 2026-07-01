@@ -115,21 +115,25 @@ export async function listRaidArrays(): Promise<RaidArray[]> {
     };
     if (sync) arr.syncPct = Number.parseFloat(sync[1]!);
 
-    // Enrich with mdadm --detail for accurate size/state. Best-effort.
-    try {
-      const { stdout } = await run("mdadm", ["--detail", device]);
-      const arraySize = stdout.match(/Array Size\s*:\s*(\d+)/);
-      if (arraySize) arr.sizeBytes = Number.parseInt(arraySize[1]!, 10) * 1024; // KiB → bytes
-      const detailState = stdout.match(/State\s*:\s*(.+)/);
-      if (detailState) arr.state = detailState[1]!.trim();
-      const detailLevel = stdout.match(/Raid Level\s*:\s*(\S+)/);
-      if (detailLevel) arr.level = detailLevel[1]!;
-    } catch {
-      /* mdadm missing or array not detailed — keep mdstat-derived values */
-    }
-
     arrays.push(arr);
   }
+
+  // Enrich with mdadm --detail for accurate size/state. Best-effort, in parallel.
+  await Promise.all(
+    arrays.map(async (arr) => {
+      try {
+        const { stdout } = await run("mdadm", ["--detail", arr.device]);
+        const arraySize = stdout.match(/Array Size\s*:\s*(\d+)/);
+        if (arraySize) arr.sizeBytes = Number.parseInt(arraySize[1]!, 10) * 1024; // KiB → bytes
+        const detailState = stdout.match(/State\s*:\s*(.+)/);
+        if (detailState) arr.state = detailState[1]!.trim();
+        const detailLevel = stdout.match(/Raid Level\s*:\s*(\S+)/);
+        if (detailLevel) arr.level = detailLevel[1]!;
+      } catch {
+        /* mdadm missing or array not detailed — keep mdstat-derived values */
+      }
+    }),
+  );
   return arrays;
 }
 
@@ -185,6 +189,11 @@ export interface SmartInfo {
   raw?: string;
 }
 
+// smartctl is slow (it wakes the drive's firmware); cache successful reads
+// briefly so UI polling doesn't hammer the disks.
+const SMART_TTL_MS = 45_000;
+const smartCache = new Map<string, { at: number; info: SmartInfo }>();
+
 /**
  * `smartctl -H -A /dev/<disk>`. Accepts a bare disk name (e.g. "sda") which we
  * normalise to /dev/<name>; the caller has already validated it against a safe
@@ -192,6 +201,9 @@ export interface SmartInfo {
  */
 export async function getSmart(diskName: string): Promise<SmartInfo> {
   const device = diskName.startsWith("/dev/") ? diskName : `/dev/${diskName}`;
+
+  const cached = smartCache.get(device);
+  if (cached && Date.now() - cached.at < SMART_TTL_MS) return cached.info;
 
   let stdout: string;
   try {
@@ -214,9 +226,12 @@ export async function getSmart(diskName: string): Promise<SmartInfo> {
   const healthy = healthMatch ? /pass/i.test(healthMatch[1]!) : false;
 
   // Temperature: prefer the dedicated attribute, fall back to "Temperature_Celsius".
+  // ATA attribute rows are: ID# NAME FLAG VALUE WORST THRESH TYPE UPDATED
+  // WHEN_FAILED RAW_VALUE — skip the 7 fields after the name and take the
+  // leading integer of RAW_VALUE (which can look like "35 (Min/Max 20/45)").
   let temperatureC: number | undefined;
   const tempAttr =
-    stdout.match(/Temperature_Celsius[^\n]*?(\d+)(?:\s|$)/) ||
+    stdout.match(/Temperature_Celsius\s+(?:\S+\s+){7}(\d+)/) ||
     stdout.match(/Current Drive Temperature:\s*(\d+)/) ||
     stdout.match(/Temperature:\s*(\d+)\s*Celsius/);
   if (tempAttr) temperatureC = Number.parseInt(tempAttr[1]!, 10);
@@ -224,7 +239,7 @@ export async function getSmart(diskName: string): Promise<SmartInfo> {
   // Power-on hours.
   let powerOnHours: number | undefined;
   const pohAttr =
-    stdout.match(/Power_On_Hours[^\n]*?(\d+)(?:\s|$)/) ||
+    stdout.match(/Power_On_Hours\s+(?:\S+\s+){7}(\d+)/) ||
     stdout.match(/number of hours powered up\s*=\s*([\d.]+)/i) ||
     stdout.match(/Power on time:\s*(\d+)/i);
   if (pohAttr) powerOnHours = Math.round(Number.parseFloat(pohAttr[1]!));
@@ -232,5 +247,6 @@ export async function getSmart(diskName: string): Promise<SmartInfo> {
   const info: SmartInfo = { device, healthy, raw: stdout };
   if (temperatureC !== undefined) info.temperatureC = temperatureC;
   if (powerOnHours !== undefined) info.powerOnHours = powerOnHours;
+  smartCache.set(device, { at: Date.now(), info });
   return info;
 }

@@ -137,7 +137,7 @@ export function DesktopIcons({ apps }: { apps: AppDef[] }) {
     setPos({ ...positionsRef.current, [d.key]: { x: d.baseX + dx, y: d.baseY + dy } });
   };
 
-  const onPointerUp = (e: ReactPointerEvent<HTMLButtonElement>) => {
+  const endDrag = (e: ReactPointerEvent<HTMLButtonElement>, cancelled: boolean) => {
     const d = drag.current;
     drag.current = null;
     if (!d) return;
@@ -147,7 +147,9 @@ export function DesktopIcons({ apps }: { apps: AppDef[] }) {
       /* pointer already released */
     }
     if (!d.moved) return; // a plain click; onClick will open the app
-    justDragged.current = true;
+    // A click event follows pointerup but not pointercancel — only arm the
+    // click suppressor when one is actually coming, or the next click stalls.
+    if (!cancelled) justDragged.current = true;
     setDragKey(null);
     const p = positionsRef.current[d.key];
     if (!p) return;
@@ -155,6 +157,9 @@ export function DesktopIcons({ apps }: { apps: AppDef[] }) {
     setPos(next);
     saveMut.mutate(next); // persist the whole layout server-side (per-user)
   };
+
+  const onPointerUp = (e: ReactPointerEvent<HTMLButtonElement>) => endDrag(e, false);
+  const onPointerCancel = (e: ReactPointerEvent<HTMLButtonElement>) => endDrag(e, true);
 
   return (
     <div ref={containerRef} className="absolute inset-0">
@@ -168,6 +173,7 @@ export function DesktopIcons({ apps }: { apps: AppDef[] }) {
             onPointerDown={(e) => onPointerDown(e, pos, app.key)}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
+            onPointerCancel={onPointerCancel}
             onClick={() => {
               if (justDragged.current) {
                 justDragged.current = false;

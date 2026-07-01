@@ -65,12 +65,17 @@ surveillanceRouter.get(
   }),
 );
 
+// Optional downscale height forwarded to Frigate (?h=<px>), so camera tiles
+// don't have to poll full-resolution snapshots.
+const snapshotQuery = z.object({ h: z.coerce.number().int().min(16).max(2160).optional() });
+
 // GET /api/surveillance/camera/:name/latest.jpg — live snapshot.
 surveillanceRouter.get(
   "/camera/:name/latest.jpg",
   asyncHandler(async (req, res) => {
     const name = cameraName.parse(req.params.name);
-    await proxy(`/api/${name}/latest.jpg`, res);
+    const { h } = snapshotQuery.parse(req.query);
+    await proxy(`/api/${name}/latest.jpg${h ? `?h=${h}` : ""}`, res);
   }),
 );
 

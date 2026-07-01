@@ -1,8 +1,7 @@
 import { ChevronRight, Film, HardDrive, Folder, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { cx } from '../../lib/format';
+import { FILES_ROOT } from '../../lib/paths';
 import type { MediaFolder, MediaItem } from './types';
-
-const ROOT = '/mnt';
 
 export function Breadcrumb({ path, onNavigate }: { path: string; onNavigate: (p: string) => void }) {
   const segments = path.replace(/\/+$/, '').split('/').filter(Boolean);
@@ -10,7 +9,7 @@ export function Breadcrumb({ path, onNavigate }: { path: string; onNavigate: (p:
     <nav className="flex flex-wrap items-center gap-1 text-sm">
       <button
         className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-medium text-zinc-300 hover:bg-zinc-800 hover:text-accent-400"
-        onClick={() => onNavigate(ROOT)}
+        onClick={() => onNavigate(FILES_ROOT)}
       >
         <HardDrive className="h-4 w-4" aria-hidden /> root
       </button>

@@ -5,7 +5,6 @@
  * failure is contained: if the module or the PAM service is unavailable we throw
  * a clean ApiError instead of crashing the server at import time.
  */
-import os from "node:os";
 import { createRequire } from "node:module";
 import { config } from "../config.js";
 import { ApiError } from "../util/errors.js";
@@ -82,5 +81,3 @@ export async function getUserPasswdEntry(
     return null;
   }
 }
-
-export const hostname = os.hostname();

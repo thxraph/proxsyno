@@ -14,8 +14,9 @@ import {
 } from 'lucide-react';
 import { api } from '../../api/client';
 import type { Guest } from '../../lib/types';
-import { cx, formatDate } from '../../lib/format';
+import { capitalize, formatDate } from '../../lib/format';
 import { PageHeader } from '../../components/PageHeader';
+import { IconBtn } from '../../components/IconBtn';
 import { DataTable, type Column } from '../../components/DataTable';
 import { Badge, type BadgeTone } from '../../components/Badge';
 import { Modal } from '../../components/Modal';
@@ -42,9 +43,11 @@ export function DockerApp() {
 
   const [selectedKey, setSelectedKey] = useState<string>('');
 
-  // Default to the first running guest once the list arrives.
+  // Default to the first running guest once the list arrives, and reselect if
+  // the current selection disappears from the polled list.
   useEffect(() => {
-    if (selectedKey || guests.length === 0) return;
+    if (guests.length === 0) return;
+    if (guests.some((g) => `${g.type}-${g.vmid}` === selectedKey)) return;
     const first = guests.find((g) => g.status === 'running') ?? guests[0];
     if (first) setSelectedKey(`${first.type}-${first.vmid}`);
   }, [guests, selectedKey]);
@@ -188,16 +191,16 @@ function GuestDocker({ guest }: { guest: Guest }) {
       align: 'right',
       render: (c) => (
         <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-          <IconAction title="Logs" icon={FileText} onClick={() => setLogsFor(c)} />
+          <IconBtn title="Logs" icon={FileText} onClick={() => setLogsFor(c)} />
           {c.state === 'running' ? (
             <>
-              <IconAction
+              <IconBtn
                 title="Restart"
                 icon={RotateCcw}
                 disabled={actionMut.isPending}
                 onClick={() => runAction(c, 'restart')}
               />
-              <IconAction
+              <IconBtn
                 title="Stop"
                 icon={Square}
                 danger
@@ -206,14 +209,14 @@ function GuestDocker({ guest }: { guest: Guest }) {
               />
             </>
           ) : (
-            <IconAction
+            <IconBtn
               title="Start"
               icon={Play}
               disabled={actionMut.isPending}
               onClick={() => runAction(c, 'start')}
             />
           )}
-          <IconAction
+          <IconBtn
             title="Remove"
             icon={Trash2}
             danger
@@ -267,17 +270,17 @@ function GuestDocker({ guest }: { guest: Guest }) {
 
       <ConfirmDialog
         open={!!pending}
-        title={pending ? `${title(pending.action)} container` : ''}
+        title={pending ? `${capitalize(pending.action)} container` : ''}
         message={
           pending ? (
             <>
-              {title(pending.action)} <strong>{pending.c.name || pending.c.id.slice(0, 12)}</strong>?
+              {capitalize(pending.action)} <strong>{pending.c.name || pending.c.id.slice(0, 12)}</strong>?
             </>
           ) : (
             ''
           )
         }
-        confirmLabel={pending ? title(pending.action) : 'Confirm'}
+        confirmLabel={pending ? capitalize(pending.action) : 'Confirm'}
         busy={actionMut.isPending}
         onCancel={() => setPending(null)}
         onConfirm={async () => {
@@ -288,10 +291,6 @@ function GuestDocker({ guest }: { guest: Guest }) {
       />
     </div>
   );
-}
-
-function title(a: ContainerAction): string {
-  return a.charAt(0).toUpperCase() + a.slice(1);
 }
 
 const STATE_TONES: Record<DockerContainer['state'], BadgeTone> = {
@@ -305,33 +304,6 @@ const STATE_TONES: Record<DockerContainer['state'], BadgeTone> = {
 
 function StateBadge({ state }: { state: DockerContainer['state'] }) {
   return <Badge tone={STATE_TONES[state]}>{state}</Badge>;
-}
-
-function IconAction({
-  title: label,
-  icon: Icon,
-  onClick,
-  disabled,
-  danger,
-}: {
-  title: string;
-  icon: typeof Play;
-  onClick: () => void;
-  disabled?: boolean;
-  danger?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      disabled={disabled}
-      onClick={onClick}
-      className={cx('btn-ghost h-8 w-8 p-0', danger && 'text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10')}
-    >
-      <Icon className="h-4 w-4" />
-    </button>
-  );
 }
 
 function LogsModal({

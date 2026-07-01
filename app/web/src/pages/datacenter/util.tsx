@@ -1,9 +1,12 @@
 import type { ReactNode } from 'react';
 import type { UseQueryResult } from '@tanstack/react-query';
 import type { LucideIcon } from 'lucide-react';
-import { ApiError } from '../../api/client';
 import { ErrorState, LoadingState } from '../../components/states';
 import { cx } from '../../lib/format';
+
+// Shared helpers re-exported for the datacenter tabs.
+export { errMsg } from '../../api/client';
+export { IconBtn } from '../../components/IconBtn';
 
 // Proxmox returns dynamic objects; type them loosely and read with accessors.
 export type PveRow = Record<string, unknown>;
@@ -21,12 +24,6 @@ export function num(v: unknown): number {
 // Proxmox booleans are 0 / 1 (string or number).
 export function bool01(v: unknown): boolean {
   return str(v) === '1';
-}
-
-export function errMsg(e: unknown, fallback = 'Request failed'): string {
-  if (e instanceof ApiError) return e.message;
-  if (e instanceof Error) return e.message;
-  return fallback;
 }
 
 // Loading / error gate around a react-query result.
@@ -76,33 +73,6 @@ export function TabHeader({
       </h2>
       {actions && <div className="flex items-center gap-2">{actions}</div>}
     </div>
-  );
-}
-
-export function IconBtn({
-  title,
-  icon: Icon,
-  onClick,
-  danger,
-  disabled,
-}: {
-  title: string;
-  icon: LucideIcon;
-  onClick: () => void;
-  danger?: boolean;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      title={title}
-      aria-label={title}
-      disabled={disabled}
-      onClick={onClick}
-      className={cx('btn-ghost h-8 w-8 p-0', danger && 'text-rose-400 hover:bg-rose-500/10')}
-    >
-      <Icon className="h-4 w-4" aria-hidden />
-    </button>
   );
 }
 

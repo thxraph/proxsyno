@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { TerminalSquare, X } from 'lucide-react';
 import { cx } from '../lib/format';
+import { XTERM_THEME } from '../lib/xtermTheme';
 import { Badge } from './Badge';
 import { useConsoleSocket, type ConsoleStatus } from '../hooks/useConsoleSocket';
 
@@ -13,30 +14,6 @@ interface TerminalProps {
   name: string;
   onClose: () => void;
 }
-
-// Dark xterm theme tuned to the app palette.
-const THEME = {
-  background: '#0b1120',
-  foreground: '#e2e8f0',
-  cursor: '#38bdf8',
-  selectionBackground: '#334155',
-  black: '#1e293b',
-  red: '#f87171',
-  green: '#34d399',
-  yellow: '#fbbf24',
-  blue: '#60a5fa',
-  magenta: '#c084fc',
-  cyan: '#22d3ee',
-  white: '#e2e8f0',
-  brightBlack: '#475569',
-  brightRed: '#fca5a5',
-  brightGreen: '#6ee7b7',
-  brightYellow: '#fcd34d',
-  brightBlue: '#93c5fd',
-  brightMagenta: '#d8b4fe',
-  brightCyan: '#67e8f9',
-  brightWhite: '#f8fafc',
-};
 
 const STATUS_LABEL: Record<ConsoleStatus, string> = {
   connecting: 'Connecting…',
@@ -84,7 +61,7 @@ export function Terminal({ slug, name, onClose }: TerminalProps) {
       fontSize: 13,
       fontFamily:
         'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
-      theme: THEME,
+      theme: XTERM_THEME,
       convertEol: true,
     });
     const fit = new FitAddon();
@@ -168,7 +145,7 @@ export function Terminal({ slug, name, onClose }: TerminalProps) {
       <div
         ref={containerRef}
         className={cx('min-h-0 flex-1 p-2')}
-        style={{ backgroundColor: THEME.background }}
+        style={{ backgroundColor: XTERM_THEME.background }}
       />
     </div>
   );

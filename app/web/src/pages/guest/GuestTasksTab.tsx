@@ -4,7 +4,8 @@ import type { GuestRef, PveTask } from '../../lib/types';
 import { DataTable, type Column } from '../../components/DataTable';
 import { Badge } from '../../components/Badge';
 import { ErrorState, LoadingState } from '../../components/states';
-import { guestKey, cfgStr, formatUnix } from './util';
+import { formatUnix } from '../../lib/format';
+import { guestKey, cfgStr } from './util';
 
 function statusTone(status: string | undefined): 'success' | 'danger' | 'warning' {
   if (!status || status === 'OK') return 'success';

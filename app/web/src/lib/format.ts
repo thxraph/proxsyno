@@ -42,6 +42,20 @@ export function formatDate(ms: number | undefined | null): string {
   }
 }
 
+// Unix-seconds timestamp (Proxmox task/snapshot/backup times).
+export function formatUnix(sec: number | undefined | null): string {
+  if (!sec) return '—';
+  try {
+    return new Date(sec * 1000).toLocaleString();
+  } catch {
+    return '—';
+  }
+}
+
+export function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 // Tiny classname combiner (avoids a clsx dependency).
 export function cx(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ');

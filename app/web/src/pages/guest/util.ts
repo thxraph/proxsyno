@@ -20,13 +20,3 @@ export function cfgStr(v: unknown): string {
 export function cfgBool(v: unknown): boolean {
   return cfgStr(v) === '1';
 }
-
-// Proxmox task start/end times are unix seconds.
-export function formatUnix(sec: number | undefined | null): string {
-  if (!sec) return '—';
-  try {
-    return new Date(sec * 1000).toLocaleString();
-  } catch {
-    return '—';
-  }
-}

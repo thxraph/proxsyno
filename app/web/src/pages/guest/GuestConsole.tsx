@@ -2,16 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Keyboard, MonitorPlay, RefreshCw } from 'lucide-react';
 import RFB from '@novnc/novnc';
 import type { Guest } from '../../lib/types';
-import { api } from '../../api/client';
+import { api, wsUrl } from '../../api/client';
 import { Badge } from '../../components/Badge';
 import { cx } from '../../lib/format';
 
 type Status = 'connecting' | 'connected' | 'disconnected' | 'error';
-
-function wsUrl(path: string): string {
-  const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  return `${proto}://${window.location.host}${path}`;
-}
 
 // In-browser VNC console for a Proxmox guest (qemu VM or LXC).
 //

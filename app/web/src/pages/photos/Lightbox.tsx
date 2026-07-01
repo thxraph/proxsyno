@@ -34,9 +34,6 @@ export function Lightbox({ items, index, rawUrl, onIndex, onClose, onDelete }: L
       className="fixed inset-0 z-50 flex flex-col bg-black/90 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
     >
       {/* Header */}
       <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm text-zinc-200">
@@ -66,8 +63,13 @@ export function Lightbox({ items, index, rawUrl, onIndex, onClose, onDelete }: L
         </div>
       </div>
 
-      {/* Stage */}
-      <div className="relative flex min-h-0 flex-1 items-center justify-center px-4 pb-4">
+      {/* Stage — clicking the empty area around the media closes, the media itself doesn't. */}
+      <div
+        className="relative flex min-h-0 flex-1 items-center justify-center px-4 pb-4"
+        onMouseDown={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+      >
         {hasPrev && (
           <button
             onClick={() => onIndex(index - 1)}

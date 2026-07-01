@@ -136,30 +136,32 @@ export async function listMedia(clientPath: string): Promise<MediaListing> {
   const folders: MediaFolder[] = [];
   const items: MediaItem[] = [];
 
-  for (const d of dirents) {
-    // Skip symlinks (and anything non-regular) to keep the jail unambiguous.
-    if (d.isSymbolicLink()) continue;
-    const full = path.join(dir, d.name);
-    if (d.isDirectory()) {
-      folders.push({ name: d.name, path: full });
-      continue;
-    }
-    if (!d.isFile()) continue;
-    const kind = kindFor(d.name);
-    if (!kind) continue;
-    try {
-      const s = await fs.stat(full);
-      items.push({
-        name: d.name,
-        path: full,
-        sizeBytes: s.size,
-        mtimeMs: Math.round(s.mtimeMs),
-        kind,
-      });
-    } catch {
-      // Unreadable entry — skip it rather than fail the whole listing.
-    }
-  }
+  await Promise.all(
+    dirents.map(async (d) => {
+      // Skip symlinks (and anything non-regular) to keep the jail unambiguous.
+      if (d.isSymbolicLink()) return;
+      const full = path.join(dir, d.name);
+      if (d.isDirectory()) {
+        folders.push({ name: d.name, path: full });
+        return;
+      }
+      if (!d.isFile()) return;
+      const kind = kindFor(d.name);
+      if (!kind) return;
+      try {
+        const s = await fs.stat(full);
+        items.push({
+          name: d.name,
+          path: full,
+          sizeBytes: s.size,
+          mtimeMs: Math.round(s.mtimeMs),
+          kind,
+        });
+      } catch {
+        // Unreadable entry — skip it rather than fail the whole listing.
+      }
+    }),
+  );
 
   const byName = (a: { name: string }, b: { name: string }) =>
     a.name.localeCompare(b.name, undefined, { sensitivity: "base" });

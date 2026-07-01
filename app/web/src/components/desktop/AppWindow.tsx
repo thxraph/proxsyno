@@ -1,4 +1,4 @@
-import { useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useMemo, useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Maximize2, Minus, Minimize2, X } from 'lucide-react';
 import { cx } from '../../lib/format';
 import { APP_MAP } from './appRegistry';
@@ -36,8 +36,12 @@ export function AppWindow({ win }: { win: WindowState }) {
   const gesture = useRef<Gesture | null>(null);
 
   const app = APP_MAP[win.appKey];
+  const Body = app?.component;
+  // Memoize the body element: drag/resize dispatches on every pointermove and
+  // rebuilds the windows array, re-rendering every AppWindow. Reusing the same
+  // element lets React skip the app subtree when only geometry/chrome changed.
+  const body = useMemo(() => (Body ? <Body /> : null), [Body]);
   if (!app) return null;
-  const Body = app.component;
   const Icon = app.icon;
 
   const onPointerMove = (e: ReactPointerEvent) => {
@@ -109,8 +113,6 @@ export function AppWindow({ win }: { win: WindowState }) {
     };
   };
 
-  if (win.minimized) return null;
-
   const positionStyle = win.maximized
     ? { inset: 0, zIndex: win.z }
     : { left: win.x, top: win.y, width: win.w, height: win.h, zIndex: win.z };
@@ -119,6 +121,9 @@ export function AppWindow({ win }: { win: WindowState }) {
     <div
       className={cx(
         'absolute flex flex-col overflow-hidden bg-zinc-900 shadow-2xl shadow-black/50',
+        // Hide (don't unmount) when minimized so app state — terminal PTYs,
+        // form input — survives; display:none also keeps it out of focus/hit-testing.
+        win.minimized && 'hidden',
         win.maximized ? 'rounded-none' : 'rounded-lg',
         win.focused ? 'ring-1 ring-orange-500/60' : 'ring-1 ring-black/40',
       )}
@@ -168,9 +173,7 @@ export function AppWindow({ win }: { win: WindowState }) {
       </div>
 
       {/* Body */}
-      <div className="min-h-0 flex-1 overflow-auto bg-zinc-950 p-4">
-        <Body />
-      </div>
+      <div className="min-h-0 flex-1 overflow-auto bg-zinc-950 p-4">{body}</div>
 
       {/* Resize handles (hidden when maximized) */}
       {!win.maximized && (

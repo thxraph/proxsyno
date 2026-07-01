@@ -6,6 +6,8 @@ import { DataTable, type Column } from '../../components/DataTable';
 import { Badge } from '../../components/Badge';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { ErrorState, LoadingState } from '../../components/states';
+import { IconBtn } from '../../components/IconBtn';
+import { capitalize } from '../../lib/format';
 import { str, type PveObj } from './util';
 
 type ServiceAction = 'start' | 'stop' | 'restart';
@@ -95,18 +97,18 @@ export function ServicesTab({ node }: { node: string }) {
 
       <ConfirmDialog
         open={!!pending}
-        title={pending ? `${title(pending.action)} service` : ''}
+        title={pending ? `${capitalize(pending.action)} service` : ''}
         message={
           pending ? (
             <>
-              {title(pending.action)} <strong>{pending.service}</strong>? This may interrupt running
+              {capitalize(pending.action)} <strong>{pending.service}</strong>? This may interrupt running
               workloads that depend on it.
             </>
           ) : (
             ''
           )
         }
-        confirmLabel={pending ? title(pending.action) : 'Confirm'}
+        confirmLabel={pending ? capitalize(pending.action) : 'Confirm'}
         busy={mut.isPending}
         onCancel={() => setPending(null)}
         onConfirm={async () => {
@@ -119,35 +121,3 @@ export function ServicesTab({ node }: { node: string }) {
   );
 }
 
-function title(a: ServiceAction): string {
-  return a.charAt(0).toUpperCase() + a.slice(1);
-}
-
-function IconBtn({
-  title: t,
-  icon: Icon,
-  onClick,
-  disabled,
-  danger,
-}: {
-  title: string;
-  icon: typeof Play;
-  onClick: () => void;
-  disabled?: boolean;
-  danger?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      title={t}
-      aria-label={t}
-      disabled={disabled}
-      onClick={onClick}
-      className={
-        'btn-ghost h-8 w-8 p-0' + (danger ? ' text-rose-400 hover:bg-rose-500/10' : '')
-      }
-    >
-      <Icon className="h-4 w-4" aria-hidden />
-    </button>
-  );
-}

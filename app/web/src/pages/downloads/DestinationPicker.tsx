@@ -4,13 +4,8 @@ import { ChevronRight, Folder, FolderOpen, HardDrive } from 'lucide-react';
 import { api } from '../../api/client';
 import type { FileEntry, FileListResponse } from '../../lib/types';
 import { cx } from '../../lib/format';
+import { FILES_ROOT, joinPath } from '../../lib/paths';
 import { ErrorState, LoadingState } from '../../components/states';
-
-const ROOT = '/mnt';
-
-function joinPath(base: string, name: string): string {
-  return base.endsWith('/') ? `${base}${name}` : `${base}/${name}`;
-}
 
 /**
  * Inline folder browser reusing the jailed /files/list endpoint. The currently
@@ -23,7 +18,7 @@ export function DestinationPicker({
   value: string;
   onChange: (path: string) => void;
 }) {
-  const [path, setPath] = useState(value || ROOT);
+  const [path, setPath] = useState(value || FILES_ROOT);
 
   const listQ = useQuery({
     queryKey: ['files', path],
@@ -45,7 +40,7 @@ export function DestinationPicker({
         <button
           type="button"
           className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-medium text-zinc-300 hover:bg-zinc-800"
-          onClick={() => navigate(ROOT)}
+          onClick={() => navigate(FILES_ROOT)}
         >
           <HardDrive className="h-3.5 w-3.5" aria-hidden /> root
         </button>

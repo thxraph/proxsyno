@@ -11,8 +11,14 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { config } from "../config.js";
+import { withLock } from "../util/asyncLock.js";
 import { ApiError } from "../util/errors.js";
 import { run, CommandNotFoundError } from "../util/exec.js";
+
+// Serialise read-modify-write cycles per config file so concurrent share
+// mutations can't lose each other's updates.
+const SMB_LOCK = "smb.conf";
+const NFS_LOCK = "/etc/exports";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -178,28 +184,32 @@ async function reloadSmbd(): Promise<void> {
 }
 
 /** Create or replace a managed SMB share, validate, then reload smbd. */
-export async function upsertSmbShare(share: SmbShare): Promise<SmbShare> {
-  const original = await readSmbConf();
+export function upsertSmbShare(share: SmbShare): Promise<SmbShare> {
+  return withLock(SMB_LOCK, async () => {
+    const original = await readSmbConf();
 
-  // Remove any existing managed block for this name, then append the new one.
-  let next = removeManagedBlock(original, share.name);
-  if (next.length > 0 && !next.endsWith("\n")) next += "\n";
-  next += `\n${renderSmbBlock(share)}\n`;
+    // Remove any existing managed block for this name, then append the new one.
+    let next = removeManagedBlock(original, share.name);
+    if (next.length > 0 && !next.endsWith("\n")) next += "\n";
+    next += `\n${renderSmbBlock(share)}\n`;
 
-  await writeAndValidateSmbConf(next);
-  await reloadSmbd();
-  return share;
+    await writeAndValidateSmbConf(next);
+    await reloadSmbd();
+    return share;
+  });
 }
 
 /** Delete a managed SMB share. Throws 404 if not present. */
-export async function deleteSmbShare(name: string): Promise<void> {
-  const original = await readSmbConf();
-  if (!extractManagedBlock(original, name)) {
-    throw ApiError.notFound(`SMB share not found: ${name}`);
-  }
-  const next = removeManagedBlock(original, name);
-  await writeAndValidateSmbConf(next);
-  await reloadSmbd();
+export function deleteSmbShare(name: string): Promise<void> {
+  return withLock(SMB_LOCK, async () => {
+    const original = await readSmbConf();
+    if (!extractManagedBlock(original, name)) {
+      throw ApiError.notFound(`SMB share not found: ${name}`);
+    }
+    const next = removeManagedBlock(original, name);
+    await writeAndValidateSmbConf(next);
+    await reloadSmbd();
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -284,32 +294,36 @@ async function exportfsReload(): Promise<void> {
 }
 
 /** Create or replace an NFS export for a path, then `exportfs -ra`. */
-export async function upsertNfsExport(exp: NfsExport): Promise<NfsExport> {
-  const existing = await listNfsExports();
-  const filtered = existing.filter((e) => e.path !== exp.path);
-  filtered.push(exp);
+export function upsertNfsExport(exp: NfsExport): Promise<NfsExport> {
+  return withLock(NFS_LOCK, async () => {
+    const existing = await listNfsExports();
+    const filtered = existing.filter((e) => e.path !== exp.path);
+    filtered.push(exp);
 
-  const header =
-    "# Managed in part by proxsyno. Lines are rewritten on change; comments above\n" +
-    "# unmanaged paths are preserved only if they precede the export table.\n";
-  const body = filtered.map(renderExportLine).join("\n");
-  await writeExports(`${header}${body}\n`);
-  await exportfsReload();
-  return exp;
+    const header =
+      "# Managed in part by proxsyno. Lines are rewritten on change; comments above\n" +
+      "# unmanaged paths are preserved only if they precede the export table.\n";
+    const body = filtered.map(renderExportLine).join("\n");
+    await writeExports(`${header}${body}\n`);
+    await exportfsReload();
+    return exp;
+  });
 }
 
 /** Delete the NFS export for a path. Throws 404 if absent. */
-export async function deleteNfsExport(exportPath: string): Promise<void> {
-  const existing = await listNfsExports();
-  if (!existing.some((e) => e.path === exportPath)) {
-    throw ApiError.notFound(`NFS export not found: ${exportPath}`);
-  }
-  const filtered = existing.filter((e) => e.path !== exportPath);
-  const header =
-    "# Managed in part by proxsyno. Lines are rewritten on change.\n";
-  const body = filtered.map(renderExportLine).join("\n");
-  await writeExports(`${header}${body}${body ? "\n" : ""}`);
-  await exportfsReload();
+export function deleteNfsExport(exportPath: string): Promise<void> {
+  return withLock(NFS_LOCK, async () => {
+    const existing = await listNfsExports();
+    if (!existing.some((e) => e.path === exportPath)) {
+      throw ApiError.notFound(`NFS export not found: ${exportPath}`);
+    }
+    const filtered = existing.filter((e) => e.path !== exportPath);
+    const header =
+      "# Managed in part by proxsyno. Lines are rewritten on change.\n";
+    const body = filtered.map(renderExportLine).join("\n");
+    await writeExports(`${header}${body}${body ? "\n" : ""}`);
+    await exportfsReload();
+  });
 }
 
 export async function listShares(): Promise<SharesResponse> {

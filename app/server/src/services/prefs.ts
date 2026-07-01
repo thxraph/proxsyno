@@ -10,6 +10,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { withLock } from "../util/asyncLock.js";
 import { ApiError } from "../util/errors.js";
 
 const PREFS_DIR = path.resolve(
@@ -54,29 +55,15 @@ async function writePrefs(user: string, prefs: Prefs): Promise<void> {
   await rename(tmp, file);
 }
 
-// Serialise per-user read-modify-write cycles so two tabs can't clobber.
-const locks = new Map<string, Promise<unknown>>();
-function withUserLock<T>(user: string, fn: () => Promise<T>): Promise<T> {
-  const prev = locks.get(user) ?? Promise.resolve();
-  const result = prev.then(fn, fn);
-  locks.set(
-    user,
-    result.then(
-      () => undefined,
-      () => undefined,
-    ),
-  );
-  return result;
-}
-
 /** Return all preferences for a user ({} if none saved yet). */
 export function getPrefs(user: string): Promise<Prefs> {
   return readPrefs(user);
 }
 
-/** Set one top-level section, leaving the others intact. Returns the merged set. */
+/** Set one top-level section, leaving the others intact. Returns the merged set.
+ *  Serialised per user (keyed lock) so two tabs can't clobber each other. */
 export function setPrefSection(user: string, section: string, value: unknown): Promise<Prefs> {
-  return withUserLock(user, async () => {
+  return withLock(`prefs:${user}`, async () => {
     const current = await readPrefs(user);
     const merged: Prefs = { ...current, [section]: value };
     if (JSON.stringify(merged).length > MAX_BYTES) {

@@ -28,13 +28,3 @@ export function bool(o: PveObj | undefined, k: string): boolean {
 export function asArray<T = PveObj>(v: unknown): T[] {
   return Array.isArray(v) ? (v as T[]) : [];
 }
-
-/** Format a Proxmox unix-seconds timestamp. */
-export function formatUnix(seconds: number | undefined): string {
-  if (!seconds) return '—';
-  try {
-    return new Date(seconds * 1000).toLocaleString();
-  } catch {
-    return '—';
-  }
-}

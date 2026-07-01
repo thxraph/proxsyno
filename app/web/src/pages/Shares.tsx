@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Network, Pencil, Plus, Server, Trash2 } from 'lucide-react';
-import { api, ApiError } from '../api/client';
+import { api, errMsg } from '../api/client';
 import type {
   NfsExport,
   NfsExportInput,
@@ -10,15 +10,15 @@ import type {
   SmbShareInput,
 } from '../lib/types';
 import { cx } from '../lib/format';
+import { NAME_RE } from '../lib/validate';
 import { PageHeader } from '../components/PageHeader';
+import { SubmitError } from '../components/SubmitError';
 import { DataTable, type Column } from '../components/DataTable';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
 import { FormField } from '../components/FormField';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ErrorState, LoadingState } from '../components/states';
-
-const SHARE_NAME_RE = /^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,31}$/;
 
 type Tab = 'smb' | 'nfs';
 
@@ -215,12 +215,12 @@ function SmbFormModal({ share, onClose }: { share: SmbShare | null; onClose: () 
       qc.invalidateQueries({ queryKey: ['shares'] });
       onClose();
     },
-    onError: (e) => setSubmitError(e instanceof ApiError ? e.message : 'Failed to save share'),
+    onError: (e) => setSubmitError(errMsg(e, 'Failed to save share')),
   });
 
   const validate = (): boolean => {
     const next: Record<string, string> = {};
-    if (!SHARE_NAME_RE.test(name))
+    if (!NAME_RE.test(name))
       next.name = 'Letters, digits, underscore and dash; 1–32 chars; must start alphanumeric/_.';
     if (!path.startsWith('/')) next.path = 'Enter an absolute path (e.g. /mnt/raid/media).';
     setErrors(next);
@@ -260,11 +260,7 @@ function SmbFormModal({ share, onClose }: { share: SmbShare | null; onClose: () 
         </>
       }
     >
-      {submitError && (
-        <div className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
-          {submitError}
-        </div>
-      )}
+      {submitError && <SubmitError message={submitError} />}
 
       <FormField label="Share name" required error={errors.name}>
         <input
@@ -425,7 +421,7 @@ function NfsFormModal({ onClose }: { onClose: () => void }) {
       qc.invalidateQueries({ queryKey: ['shares'] });
       onClose();
     },
-    onError: (e) => setSubmitError(e instanceof ApiError ? e.message : 'Failed to save export'),
+    onError: (e) => setSubmitError(errMsg(e, 'Failed to save export')),
   });
 
   const updateClient = (i: number, patch: Partial<ClientRow>) =>
@@ -466,11 +462,7 @@ function NfsFormModal({ onClose }: { onClose: () => void }) {
         </>
       }
     >
-      {submitError && (
-        <div className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
-          {submitError}
-        </div>
-      )}
+      {submitError && <SubmitError message={submitError} />}
 
       <FormField label="Export path" required error={errors.path}>
         <input

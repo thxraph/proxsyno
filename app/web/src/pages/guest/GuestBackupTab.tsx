@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Archive, Database, Play } from 'lucide-react';
-import { pve, ApiError } from '../../api/client';
+import { pve, errMsg } from '../../api/client';
 import type { GuestRef, PveStorage, PveStorageContent } from '../../lib/types';
 import { DataTable, type Column } from '../../components/DataTable';
 import { FormField } from '../../components/FormField';
 import { ErrorState, LoadingState } from '../../components/states';
-import { formatBytes } from '../../lib/format';
-import { guestKey, cfgStr, formatUnix } from './util';
+import { formatBytes, formatUnix } from '../../lib/format';
+import { guestKey, cfgStr } from './util';
 
 interface BackupListResult {
   storages: string[];
@@ -50,7 +50,7 @@ export function GuestBackupTab({ guest }: { guest: GuestRef }) {
       qc.invalidateQueries({ queryKey: guestKey(guest, 'backups') });
       qc.invalidateQueries({ queryKey: guestKey(guest, 'tasks') });
     },
-    onError: (e) => setSubmitError(e instanceof ApiError ? e.message : 'Failed to start backup'),
+    onError: (e) => setSubmitError(errMsg(e, 'Failed to start backup')),
   });
 
   const storages = backupsQ.data?.storages ?? [];

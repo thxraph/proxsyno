@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Save } from 'lucide-react';
-import { pve, ApiError } from '../../api/client';
+import { pve, errMsg } from '../../api/client';
 import type { GuestRef, PveConfig } from '../../lib/types';
 import { FormField } from '../../components/FormField';
 import { Toggle } from '../Shares';
@@ -62,7 +62,7 @@ export function ConfigEditor({ guest, fields, renderExtra }: ConfigEditorProps) 
       setDraft({});
       qc.invalidateQueries({ queryKey: guestKey(guest, 'config') });
     },
-    onError: (e) => setSubmitError(e instanceof ApiError ? e.message : 'Failed to save config'),
+    onError: (e) => setSubmitError(errMsg(e, 'Failed to save config')),
   });
 
   if (cfgQ.isLoading) return <LoadingState label="Loading config…" />;

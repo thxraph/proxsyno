@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Book,
@@ -25,7 +25,14 @@ export function NoteStation() {
   const [notebook, setNotebook] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const q = search.trim();
+  // Debounce the search so we don't fire one request per keystroke.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 250);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const q = debouncedSearch.trim();
   const indexQ = useQuery({
     queryKey: ['notes', q],
     queryFn: () => api.get<NotesIndex>(`/notes${q ? `?q=${encodeURIComponent(q)}` : ''}`),

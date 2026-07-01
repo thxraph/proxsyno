@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pencil, Plus, Trash2, UserCog, Users as UsersIcon } from 'lucide-react';
-import { api, ApiError } from '../api/client';
+import { api, errMsg } from '../api/client';
 import type { Group, NasUser, UserCreateInput, UserUpdateInput } from '../lib/types';
 import { cx } from '../lib/format';
+import { NAME_RE } from '../lib/validate';
 import { PageHeader } from '../components/PageHeader';
+import { SubmitError } from '../components/SubmitError';
 import { DataTable, type Column } from '../components/DataTable';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
@@ -12,8 +14,6 @@ import { FormField } from '../components/FormField';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ErrorState, LoadingState } from '../components/states';
 import { Toggle } from './Shares';
-
-const USERNAME_RE = /^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,31}$/;
 
 export function Users() {
   const qc = useQueryClient();
@@ -196,7 +196,7 @@ function UserFormModal({
       qc.invalidateQueries({ queryKey: ['users'] });
       onClose();
     },
-    onError: (e) => setSubmitError(e instanceof ApiError ? e.message : 'Failed to save user'),
+    onError: (e) => setSubmitError(errMsg(e, 'Failed to save user')),
   });
 
   const toggleGroup = (g: string) =>
@@ -204,7 +204,7 @@ function UserFormModal({
 
   const validate = (): boolean => {
     const next: Record<string, string> = {};
-    if (!isEdit && !USERNAME_RE.test(name))
+    if (!isEdit && !NAME_RE.test(name))
       next.name = 'Letters, digits, underscore and dash; 1–32 chars.';
     if (!isEdit && password.length < 1) next.password = 'A password is required for new users.';
     setErrors(next);
@@ -248,11 +248,7 @@ function UserFormModal({
         </>
       }
     >
-      {submitError && (
-        <div className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
-          {submitError}
-        </div>
-      )}
+      {submitError && <SubmitError message={submitError} />}
 
       <FormField label="Username" required={!isEdit} error={errors.name}>
         <input

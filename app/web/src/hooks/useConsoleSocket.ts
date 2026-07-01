@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { wsUrl } from '../api/client';
 import type { ConsoleClientMessage, ConsoleServerMessage } from '../lib/types';
 
 export type ConsoleStatus = 'connecting' | 'open' | 'closed';
@@ -15,11 +16,6 @@ interface UseConsoleSocketResult {
   sendInput: (data: string) => void;
   sendResize: (cols: number, rows: number) => void;
   close: () => void;
-}
-
-function wsUrl(path: string): string {
-  const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  return `${proto}://${window.location.host}${path}`;
 }
 
 // Connects to /ws/proxmox/console?script=<slug> and speaks the SPEC JSON

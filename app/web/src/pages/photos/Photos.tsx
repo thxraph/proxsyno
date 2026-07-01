@@ -3,25 +3,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronRight, Image as ImageIcon } from 'lucide-react';
 import { api } from '../../api/client';
 import { cx } from '../../lib/format';
+import { FILES_ROOT, parentPath } from '../../lib/paths';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { ErrorState, LoadingState } from '../../components/states';
 import { Breadcrumb, PhotoGrid } from './PhotoGrid';
 import { Lightbox } from './Lightbox';
 import type { MediaItem, MediaKind, MediaListing } from './types';
 
-const ROOT = '/mnt';
 const API = '/api';
 
 const thumbUrl = (p: string) => `${API}/photos/thumb?path=${encodeURIComponent(p)}`;
 const rawUrl = (p: string) => `${API}/photos/raw?path=${encodeURIComponent(p)}`;
-
-function parentPath(path: string): string {
-  if (path === ROOT || path === '/') return ROOT;
-  const trimmed = path.replace(/\/+$/, '');
-  const idx = trimmed.lastIndexOf('/');
-  const parent = idx <= 0 ? '/' : trimmed.slice(0, idx);
-  return parent.length < ROOT.length ? ROOT : parent;
-}
 
 type Filter = 'all' | 'image' | 'video';
 const FILTERS: { key: Filter; label: string }[] = [
@@ -32,7 +24,7 @@ const FILTERS: { key: Filter; label: string }[] = [
 
 export function Photos() {
   const qc = useQueryClient();
-  const [path, setPath] = useState(ROOT);
+  const [path, setPath] = useState(FILES_ROOT);
   const [filter, setFilter] = useState<Filter>('all');
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [toDelete, setToDelete] = useState<MediaItem | null>(null);
@@ -42,9 +34,12 @@ export function Photos() {
     queryFn: () => api.get<MediaListing>(`/photos?path=${encodeURIComponent(path)}`),
   });
 
+  // Invalidate the deleted item's own folder (from the mutation variable), not
+  // the current `path` state — the user may have navigated away meanwhile.
   const deleteMut = useMutation({
     mutationFn: (target: string) => api.del<void>(`/photos?path=${encodeURIComponent(target)}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['photos', path] }),
+    onSuccess: (_data, target) =>
+      qc.invalidateQueries({ queryKey: ['photos', parentPath(target)] }),
   });
 
   const items = useMemo(
@@ -85,7 +80,7 @@ export function Photos() {
 
       <div className="flex flex-wrap items-center gap-3">
         <Breadcrumb path={path} onNavigate={navigate} />
-        {path !== ROOT && (
+        {path !== FILES_ROOT && (
           <button
             className="inline-flex items-center gap-1 text-sm text-zinc-400 hover:text-accent-400"
             onClick={() => navigate(parentPath(path))}

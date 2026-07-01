@@ -6,7 +6,8 @@ import { DataTable, type Column } from '../../components/DataTable';
 import { Badge } from '../../components/Badge';
 import { Modal } from '../../components/Modal';
 import { ErrorState, LoadingState } from '../../components/states';
-import { asArray, formatUnix, num, str, type PveObj } from './util';
+import { formatUnix } from '../../lib/format';
+import { asArray, num, str, type PveObj } from './util';
 
 export function TasksTab({ node }: { node: string }) {
   const q = useQuery({

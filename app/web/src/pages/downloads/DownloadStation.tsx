@@ -12,7 +12,8 @@ import {
   XCircle,
 } from 'lucide-react';
 import { api } from '../../api/client';
-import { cx, formatBitrate, formatBytes } from '../../lib/format';
+import { formatBitrate, formatBytes } from '../../lib/format';
+import { IconBtn } from '../../components/IconBtn';
 import { PageHeader } from '../../components/PageHeader';
 import { DataTable, type Column } from '../../components/DataTable';
 import { Badge, type BadgeTone } from '../../components/Badge';
@@ -22,7 +23,8 @@ import { ErrorState, LoadingState } from '../../components/states';
 import { AddDownloadModal } from './AddDownloadModal';
 import type { DownloadCapabilities, DownloadJob, DownloadStatus } from './types';
 
-const REFETCH_MS = 1500;
+const REFETCH_MS = 1500; // while something is downloading/queued
+const REFETCH_IDLE_MS = 10_000; // everything paused/done/errored
 
 const STATUS_TONE: Record<DownloadStatus, BadgeTone> = {
   queued: 'neutral',
@@ -50,7 +52,10 @@ export function DownloadStation() {
   const listQ = useQuery({
     queryKey: ['downloads'],
     queryFn: () => api.get<DownloadJob[]>('/downloads'),
-    refetchInterval: REFETCH_MS,
+    refetchInterval: (query) =>
+      query.state.data?.some((j) => j.status === 'active' || j.status === 'queued')
+        ? REFETCH_MS
+        : REFETCH_IDLE_MS,
   });
 
   const actionMut = useMutation({
@@ -129,12 +134,12 @@ export function DownloadStation() {
         <div className="flex justify-end gap-1">
           {(j.status === 'active' || j.status === 'queued') && (
             <>
-              <IconButton
+              <IconBtn
                 title="Pause"
                 icon={Pause}
                 onClick={() => actionMut.mutate({ id: j.id, action: 'pause' })}
               />
-              <IconButton
+              <IconBtn
                 title="Cancel"
                 icon={XCircle}
                 onClick={() => actionMut.mutate({ id: j.id, action: 'cancel' })}
@@ -142,20 +147,20 @@ export function DownloadStation() {
             </>
           )}
           {j.status === 'paused' && (
-            <IconButton
+            <IconBtn
               title="Resume"
               icon={Play}
               onClick={() => actionMut.mutate({ id: j.id, action: 'resume' })}
             />
           )}
           {j.status === 'error' && (
-            <IconButton
+            <IconBtn
               title="Retry"
               icon={RotateCcw}
               onClick={() => actionMut.mutate({ id: j.id, action: 'resume' })}
             />
           )}
-          <IconButton title="Remove" icon={Trash2} danger onClick={() => setToRemove(j)} />
+          <IconBtn title="Remove" icon={Trash2} danger onClick={() => setToRemove(j)} />
         </div>
       ),
     },
@@ -223,26 +228,3 @@ export function DownloadStation() {
   );
 }
 
-function IconButton({
-  title,
-  icon: Icon,
-  onClick,
-  danger,
-}: {
-  title: string;
-  icon: typeof Pause;
-  onClick: () => void;
-  danger?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      title={title}
-      aria-label={title}
-      onClick={onClick}
-      className={cx('btn-ghost h-8 w-8 p-0', danger && 'text-rose-400 hover:bg-rose-500/10')}
-    >
-      <Icon className="h-4 w-4" aria-hidden />
-    </button>
-  );
-}

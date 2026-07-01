@@ -102,5 +102,3 @@ export const config = {
 
   version: "0.1.0",
 } as const;
-
-export type Config = typeof config;

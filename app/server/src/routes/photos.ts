@@ -34,9 +34,18 @@ async function streamFile(req: Request, res: Response, absPath: string, contentT
 
   const range = req.headers.range;
   const match = range ? /^bytes=(\d*)-(\d*)$/.exec(range) : null;
-  if (match) {
-    let start = match[1] ? Number.parseInt(match[1], 10) : 0;
-    let end = match[2] ? Number.parseInt(match[2], 10) : total - 1;
+  if (match && (match[1] || match[2])) {
+    let start: number;
+    let end: number;
+    if (match[1]) {
+      start = Number.parseInt(match[1], 10);
+      end = match[2] ? Number.parseInt(match[2], 10) : total - 1;
+    } else {
+      // Suffix range (RFC 7233): "bytes=-N" means the LAST N bytes.
+      const n = Number.parseInt(match[2]!, 10);
+      start = Math.max(total - n, 0);
+      end = total - 1;
+    }
     if (Number.isNaN(start) || Number.isNaN(end) || start > end || start >= total) {
       res.status(416).setHeader("Content-Range", `bytes */${total}`).end();
       return;

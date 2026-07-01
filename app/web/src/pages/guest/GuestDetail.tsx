@@ -23,7 +23,7 @@ import { Badge } from '../../components/Badge';
 import { ProgressBar } from '../../components/ProgressBar';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { ErrorState, LoadingState } from '../../components/states';
-import { cx, formatBytes, formatUptime } from '../../lib/format';
+import { capitalize, cx, formatBytes, formatUptime } from '../../lib/format';
 import { guestBase, guestKey } from './util';
 import { HardwareTab, OptionsTab } from './GuestConfigTabs';
 import { GuestSnapshotsTab } from './GuestSnapshotsTab';
@@ -194,18 +194,18 @@ function SummaryTab({ guest }: { guest: Guest }) {
 
       <ConfirmDialog
         open={!!pending}
-        title={pending ? `${actionTitle(pending)} guest` : ''}
+        title={pending ? `${capitalize(pending)} guest` : ''}
         message={
           pending ? (
             <>
-              {actionTitle(pending)} <strong>{guest.name}</strong> ({guest.type === 'qemu' ? 'VM' : 'LXC'}{' '}
+              {capitalize(pending)} <strong>{guest.name}</strong> ({guest.type === 'qemu' ? 'VM' : 'LXC'}{' '}
               {guest.vmid})?
             </>
           ) : (
             ''
           )
         }
-        confirmLabel={pending ? actionTitle(pending) : 'Confirm'}
+        confirmLabel={pending ? capitalize(pending) : 'Confirm'}
         busy={actionMut.isPending}
         onCancel={() => setPending(null)}
         onConfirm={async () => {
@@ -240,10 +240,6 @@ function MetricCard({
       {children}
     </div>
   );
-}
-
-function actionTitle(a: GuestAction): string {
-  return a.charAt(0).toUpperCase() + a.slice(1);
 }
 
 function StatusBadge({ status }: { status: string }) {

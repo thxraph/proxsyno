@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
-import { api, ApiError } from '../../api/client';
+import { api, errMsg } from '../../api/client';
 import type { Guest } from '../../lib/types';
 import { Modal } from '../../components/Modal';
 import { FormField } from '../../components/FormField';
@@ -36,7 +36,7 @@ export function RunContainerModal({ guest, onClose }: { guest: Guest; onClose: (
       qc.invalidateQueries({ queryKey: ['docker', 'containers', guest.type, guest.vmid] });
       onClose();
     },
-    onError: (e) => setSubmitError(e instanceof ApiError ? e.message : 'Failed to create container'),
+    onError: (e) => setSubmitError(errMsg(e, 'Failed to create container')),
   });
 
   const validate = (): boolean => {

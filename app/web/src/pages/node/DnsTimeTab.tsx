@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Clock, Globe, LocateFixed, Save } from 'lucide-react';
-import { pve, ApiError } from '../../api/client';
+import { pve, errMsg } from '../../api/client';
+import { formatUnix } from '../../lib/format';
 import { FormField } from '../../components/FormField';
 import { ErrorState, LoadingState } from '../../components/states';
 import { str, type PveObj } from './util';
@@ -50,8 +51,12 @@ function DnsCard({ node }: { node: string }) {
   const [dns3, setDns3] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  // Hydrate the form from the server once; later refetches (e.g. after a save)
+  // must not clobber in-progress edits.
+  const hydrated = useRef(false);
   useEffect(() => {
-    if (!q.data) return;
+    if (hydrated.current || !q.data) return;
+    hydrated.current = true;
     setSearch(str(q.data, 'search'));
     setDns1(str(q.data, 'dns1'));
     setDns2(str(q.data, 'dns2'));
@@ -67,7 +72,7 @@ function DnsCard({ node }: { node: string }) {
       return pve.put(`/pve/nodes/${node}/dns`, params);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['node', 'dns', node] }),
-    onError: (e) => setError(e instanceof ApiError ? e.message : 'Failed to save DNS settings'),
+    onError: (e) => setError(errMsg(e, 'Failed to save DNS settings')),
   });
 
   return (
@@ -118,18 +123,22 @@ function TimeCard({ node }: { node: string }) {
   const [timezone, setTimezone] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  // Hydrate once — see DnsCard.
+  const hydrated = useRef(false);
   useEffect(() => {
-    if (q.data) setTimezone(str(q.data, 'timezone'));
+    if (hydrated.current || !q.data) return;
+    hydrated.current = true;
+    setTimezone(str(q.data, 'timezone'));
   }, [q.data]);
 
   const mut = useMutation({
     mutationFn: () => pve.put(`/pve/nodes/${node}/time`, { timezone }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['node', 'time', node] }),
-    onError: (e) => setError(e instanceof ApiError ? e.message : 'Failed to save timezone'),
+    onError: (e) => setError(errMsg(e, 'Failed to save timezone')),
   });
 
   const localtime = q.data ? Number(q.data.localtime) : undefined;
-  const localStr = localtime ? new Date(localtime * 1000).toLocaleString() : '—';
+  const localStr = formatUnix(localtime);
 
   // Ensure the node's current value is always selectable, even if it somehow
   // isn't in the browser's IANA list.

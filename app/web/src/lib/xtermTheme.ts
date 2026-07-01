@@ -1,0 +1,23 @@
+// Dark xterm theme tuned to the app palette.
+export const XTERM_THEME = {
+  background: '#0b1120',
+  foreground: '#e2e8f0',
+  cursor: '#38bdf8',
+  selectionBackground: '#334155',
+  black: '#1e293b',
+  red: '#f87171',
+  green: '#34d399',
+  yellow: '#fbbf24',
+  blue: '#60a5fa',
+  magenta: '#c084fc',
+  cyan: '#22d3ee',
+  white: '#e2e8f0',
+  brightBlack: '#475569',
+  brightRed: '#fca5a5',
+  brightGreen: '#6ee7b7',
+  brightYellow: '#fcd34d',
+  brightBlue: '#93c5fd',
+  brightMagenta: '#d8b4fe',
+  brightCyan: '#67e8f9',
+  brightWhite: '#f8fafc',
+};

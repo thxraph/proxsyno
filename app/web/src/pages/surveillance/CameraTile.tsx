@@ -10,7 +10,8 @@ import { cx } from '../../lib/format';
  */
 export function CameraTile({ name, tick }: { name: string; tick: number }) {
   const [errored, setErrored] = useState(false);
-  const src = `/api/surveillance/camera/${encodeURIComponent(name)}/latest.jpg?t=${tick}`;
+  // h=360 asks the proxy/Frigate for a tile-sized snapshot instead of full-res.
+  const src = `/api/surveillance/camera/${encodeURIComponent(name)}/latest.jpg?h=360&t=${tick}`;
 
   return (
     <div className="card overflow-hidden">

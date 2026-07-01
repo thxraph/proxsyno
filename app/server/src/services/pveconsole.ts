@@ -33,8 +33,6 @@ const PVE_API_PORT = 8006;
 
 export type GuestType = "qemu" | "lxc";
 
-export const NODE_NAME_REGEX = /^[a-zA-Z0-9._-]+$/;
-
 export interface ConsoleParams {
   node: string;
   type: GuestType;
@@ -52,20 +50,6 @@ export interface VncProxy {
 // We only ever dial 127.0.0.1 and refuse anything outside it.
 const VNC_PORT_MIN = 5900;
 const VNC_PORT_MAX = 5999;
-
-/** Validate the ws query params; returns null on any malformed value. */
-export function parseConsoleParams(search: URLSearchParams): ConsoleParams | null {
-  const node = search.get("node") ?? "";
-  const type = search.get("type") ?? "";
-  const vmidRaw = search.get("vmid") ?? "";
-  // NODE_NAME_REGEX permits dots; reject ".." so node can't normalise the PVE
-  // API path upward (it is interpolated into /api2/json/nodes/<node>/...).
-  if (!NODE_NAME_REGEX.test(node) || node.includes("..")) return null;
-  if (type !== "qemu" && type !== "lxc") return null;
-  const vmid = Number(vmidRaw);
-  if (!Number.isInteger(vmid) || vmid <= 0) return null;
-  return { node, type, vmid };
-}
 
 /**
  * Mint a local PVE API ticket + CSRF token for root@pam straight from the
@@ -138,8 +122,8 @@ function pveApiPost(
 /** Ask Proxmox to open a VNC proxy for the guest. Throws on failure. */
 export async function createVncProxy(params: ConsoleParams): Promise<VncProxy> {
   const { node, type, vmid } = params;
-  // node/type/vmid are already validated by parseConsoleParams, so this path is
-  // safe to interpolate (no shell, and the values match strict patterns).
+  // node/type/vmid are already validated by the route's zod schemas, so this
+  // path is safe to interpolate (no shell, and the values match strict patterns).
   const auth = await mintPveAuth();
   // `websocket=1` is essential: without it, vncterm negotiates VeNCrypt
   // (security type 19, subtype X509Plain) which requires an inner TLS session

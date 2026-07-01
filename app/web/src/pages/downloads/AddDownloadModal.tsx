@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link2 } from 'lucide-react';
-import { api, ApiError } from '../../api/client';
+import { api, errMsg } from '../../api/client';
 import { Modal } from '../../components/Modal';
 import { FormField } from '../../components/FormField';
 import { DestinationPicker } from './DestinationPicker';
@@ -28,7 +28,7 @@ export function AddDownloadModal({
       qc.invalidateQueries({ queryKey: ['downloads'] });
       onClose();
     },
-    onError: (e) => setError(e instanceof ApiError ? e.message : 'Failed to add download'),
+    onError: (e) => setError(errMsg(e, 'Failed to add download')),
   });
 
   const onSubmit = () => {
@@ -84,7 +84,7 @@ export function AddDownloadModal({
           value={url}
           autoFocus
           onChange={(e) => setUrl(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && onSubmit()}
+          onKeyDown={(e) => e.key === 'Enter' && !mut.isPending && onSubmit()}
           placeholder="https://example.com/file.iso"
         />
       </FormField>

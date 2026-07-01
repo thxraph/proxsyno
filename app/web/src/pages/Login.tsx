@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { HardDrive, Loader2, Lock, User as UserIcon } from 'lucide-react';
-import { ApiError } from '../api/client';
+import { ApiError, errMsg } from '../api/client';
 import { useLogin, useMe } from '../hooks/useAuth';
 
 function nextTarget(): string {
@@ -32,13 +32,11 @@ export function Login() {
       await login.mutateAsync({ username: username.trim(), password });
       navigate(nextTarget(), { replace: true });
     } catch (err) {
-      if (err instanceof ApiError) {
-        if (err.status === 403) setError('This account is not permitted to sign in.');
-        else if (err.status === 401) setError('Incorrect username or password.');
-        else setError(err.message);
-      } else {
-        setError('Unable to sign in. Please try again.');
-      }
+      if (err instanceof ApiError && err.status === 403)
+        setError('This account is not permitted to sign in.');
+      else if (err instanceof ApiError && err.status === 401)
+        setError('Incorrect username or password.');
+      else setError(errMsg(err, 'Unable to sign in. Please try again.'));
     }
   };
 

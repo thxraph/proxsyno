@@ -147,19 +147,17 @@ async function getNodeName(): Promise<string> {
 
 /** `{ isProxmox, node, pveVersion? }` — detected via `pveversion` + `hostname`. */
 export async function getAvailable(): Promise<Availability> {
-  const node = await getNodeName();
-  try {
-    const { stdout } = await run("pveversion", [], { timeoutMs: 5000 });
-    const line = stdout.trim().split("\n")[0] ?? "";
-    // e.g. "pve-manager/8.2.2/9355359cdf9b6909 (running kernel: 6.8.4-2-pve)"
-    const m = line.match(/pve-manager\/([^\s/]+)/);
-    const pveVersion = m ? m[1] : line || undefined;
-    return pveVersion ? { isProxmox: true, node, pveVersion } : { isProxmox: true, node };
-  } catch (err) {
-    if (err instanceof CommandNotFoundError) return { isProxmox: false, node };
-    // pveversion exists but errored — treat as not-usable for the UI.
-    return { isProxmox: false, node };
-  }
+  const [node, pve] = await Promise.all([
+    getNodeName(),
+    // pveversion missing OR erroring → not-usable for the UI.
+    run("pveversion", [], { timeoutMs: 5000 }).catch(() => null),
+  ]);
+  if (!pve) return { isProxmox: false, node };
+  const line = pve.stdout.trim().split("\n")[0] ?? "";
+  // e.g. "pve-manager/8.2.2/9355359cdf9b6909 (running kernel: 6.8.4-2-pve)"
+  const m = line.match(/pve-manager\/([^\s/]+)/);
+  const pveVersion = m ? m[1] : line || undefined;
+  return pveVersion ? { isProxmox: true, node, pveVersion } : { isProxmox: true, node };
 }
 
 // ---------------------------------------------------------------------------
@@ -321,42 +319,50 @@ interface PvesmVolume {
 
 /** ISO images on a storage via `pvesm list <storage> --content iso`. */
 async function readIsos(storages: StorageOption[]): Promise<IsoOption[]> {
-  const out: IsoOption[] = [];
-  for (const s of storages) {
-    if (!s.content.includes("iso")) continue;
-    try {
-      const { stdout } = await run("pvesm", ["list", s.name, "--content", "iso", "--output-format", "json"]);
-      const vols = JSON.parse(stdout) as PvesmVolume[];
-      for (const v of vols) {
-        if (!v.volid) continue;
-        out.push({ volid: v.volid, storage: s.name, sizeBytes: typeof v.size === "number" ? v.size : 0 });
-      }
-    } catch {
-      /* skip storages that fail to list */
-    }
-  }
-  return out;
+  const lists = await Promise.all(
+    storages
+      .filter((s) => s.content.includes("iso"))
+      .map(async (s): Promise<IsoOption[]> => {
+        try {
+          const { stdout } = await run("pvesm", ["list", s.name, "--content", "iso", "--output-format", "json"]);
+          const vols = JSON.parse(stdout) as PvesmVolume[];
+          const out: IsoOption[] = [];
+          for (const v of vols) {
+            if (!v.volid) continue;
+            out.push({ volid: v.volid, storage: s.name, sizeBytes: typeof v.size === "number" ? v.size : 0 });
+          }
+          return out;
+        } catch {
+          return []; /* skip storages that fail to list */
+        }
+      }),
+  );
+  return lists.flat();
 }
 
 /** Downloaded LXC templates per storage via `pveam list <storage>`. */
 async function readTemplates(storages: StorageOption[]): Promise<TemplateOption[]> {
-  const out: TemplateOption[] = [];
-  for (const s of storages) {
-    if (!s.content.includes("vztmpl")) continue;
-    try {
-      // pveam list emits a plain text table: "<volid>    <size>"; header is NAME/SIZE.
-      const { stdout } = await run("pveam", ["list", s.name]);
-      for (const line of stdout.split("\n")) {
-        const volid = line.trim().split(/\s+/)[0];
-        if (!volid || volid === "NAME" || !volid.includes(":")) continue;
-        const base = volid.split("/").pop() ?? volid;
-        out.push({ volid, storage: s.name, name: base });
-      }
-    } catch {
-      /* skip storages that fail to list */
-    }
-  }
-  return out;
+  const lists = await Promise.all(
+    storages
+      .filter((s) => s.content.includes("vztmpl"))
+      .map(async (s): Promise<TemplateOption[]> => {
+        try {
+          // pveam list emits a plain text table: "<volid>    <size>"; header is NAME/SIZE.
+          const { stdout } = await run("pveam", ["list", s.name]);
+          const out: TemplateOption[] = [];
+          for (const line of stdout.split("\n")) {
+            const volid = line.trim().split(/\s+/)[0];
+            if (!volid || volid === "NAME" || !volid.includes(":")) continue;
+            const base = volid.split("/").pop() ?? volid;
+            out.push({ volid, storage: s.name, name: base });
+          }
+          return out;
+        } catch {
+          return []; /* skip storages that fail to list */
+        }
+      }),
+  );
+  return lists.flat();
 }
 
 interface IpLink {
@@ -394,14 +400,14 @@ async function readNextId(): Promise<number> {
 }
 
 export async function getOptions(): Promise<ProxmoxOptions> {
-  const node = await getNodeName();
-  const storages = await readStorages();
-  const [nextId, isos, templates, bridges] = await Promise.all([
+  // readIsos/readTemplates need the storage list; everything else is independent.
+  const [node, storages, nextId, bridges] = await Promise.all([
+    getNodeName(),
+    readStorages(),
     readNextId(),
-    readIsos(storages),
-    readTemplates(storages),
     readBridges(),
   ]);
+  const [isos, templates] = await Promise.all([readIsos(storages), readTemplates(storages)]);
   return { node, nextId, storages, isos, templates, bridges, osTypes: [...OS_TYPES] };
 }
 

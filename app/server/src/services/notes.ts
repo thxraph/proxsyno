@@ -11,6 +11,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { withLock } from "../util/asyncLock.js";
 import { ApiError } from "../util/errors.js";
 
 const NOTES_DIR = path.resolve(
@@ -61,17 +62,9 @@ async function writeDb(db: Db): Promise<void> {
   await rename(tmp, DB_PATH);
 }
 
-// Serialise read-modify-write cycles so concurrent requests can't clobber each
-// other. Reads that don't mutate go straight to readDb (rename is atomic).
-let lock: Promise<unknown> = Promise.resolve();
-function withLock<T>(fn: () => Promise<T>): Promise<T> {
-  const result = lock.then(fn, fn);
-  lock = result.then(
-    () => undefined,
-    () => undefined,
-  );
-  return result;
-}
+// Read-modify-write cycles are serialised via withLock(DB_PATH, ...) so
+// concurrent requests can't clobber each other. Reads that don't mutate go
+// straight to readDb (rename is atomic).
 
 // ---------------------------------------------------------------------------
 // Reads
@@ -127,7 +120,7 @@ export interface CreateNoteInput {
 }
 
 export async function createNote(input: CreateNoteInput): Promise<Note> {
-  return withLock(async () => {
+  return withLock(DB_PATH, async () => {
     const db = await readDb();
     const now = Date.now();
     const note: Note = {
@@ -153,7 +146,7 @@ export interface UpdateNoteInput {
 }
 
 export async function updateNote(id: string, input: UpdateNoteInput): Promise<Note> {
-  return withLock(async () => {
+  return withLock(DB_PATH, async () => {
     const db = await readDb();
     const note = db.notes.find((n) => n.id === id);
     if (!note) throw ApiError.notFound(`Note not found: ${id}`);
@@ -168,7 +161,7 @@ export async function updateNote(id: string, input: UpdateNoteInput): Promise<No
 }
 
 export async function deleteNote(id: string): Promise<void> {
-  return withLock(async () => {
+  return withLock(DB_PATH, async () => {
     const db = await readDb();
     const next = db.notes.filter((n) => n.id !== id);
     if (next.length === db.notes.length) {

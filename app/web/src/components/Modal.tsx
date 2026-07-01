@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { cx } from '../lib/format';
 
@@ -9,6 +9,8 @@ interface ModalProps {
   children: ReactNode;
   footer?: ReactNode;
   size?: 'sm' | 'md' | 'lg';
+  /** While true, Escape / backdrop / the X button won't close the modal. */
+  busy?: boolean;
 }
 
 const SIZES = {
@@ -17,19 +19,34 @@ const SIZES = {
   lg: 'max-w-2xl',
 };
 
-export function Modal({ open, onClose, title, children, footer, size = 'md' }: ModalProps) {
+// Open modals in stacking order, so only the topmost one reacts to Escape.
+const modalStack: object[] = [];
+
+export function Modal({ open, onClose, title, children, footer, size = 'md', busy = false }: ModalProps) {
+  const stackId = useRef({});
+
+  useEffect(() => {
+    if (!open) return;
+    const id = stackId.current;
+    modalStack.push(id);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      const i = modalStack.indexOf(id);
+      if (i >= 0) modalStack.splice(i, 1);
+      document.body.style.overflow = '';
+    };
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key !== 'Escape' || busy) return;
+      if (modalStack[modalStack.length - 1] !== stackId.current) return;
+      onClose();
     };
     window.addEventListener('keydown', onKey);
-    document.body.style.overflow = 'hidden';
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
-    };
-  }, [open, onClose]);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose, busy]);
 
   if (!open) return null;
 
@@ -37,7 +54,7 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }: M
     <div
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 backdrop-blur-sm sm:items-center"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (!busy && e.target === e.currentTarget) onClose();
       }}
       role="dialog"
       aria-modal="true"
@@ -49,6 +66,7 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }: M
             type="button"
             className="btn-ghost -mr-2 h-8 w-8 rounded-lg p-0"
             onClick={onClose}
+            disabled={busy}
             aria-label="Close"
           >
             <X className="h-4 w-4" />

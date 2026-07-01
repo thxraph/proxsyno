@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Network, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react';
-import { pve, ApiError } from '../../api/client';
+import { pve, errMsg } from '../../api/client';
 import { DataTable, type Column } from '../../components/DataTable';
 import { Badge } from '../../components/Badge';
 import { Modal } from '../../components/Modal';
@@ -240,7 +240,7 @@ function IfaceFormModal({
       onSaved();
       onClose();
     },
-    onError: (e) => setError(e instanceof ApiError ? e.message : 'Failed to save interface'),
+    onError: (e) => setError(errMsg(e, 'Failed to save interface')),
   });
 
   const submit = () => {

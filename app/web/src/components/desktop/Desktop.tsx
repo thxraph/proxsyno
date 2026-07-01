@@ -41,7 +41,15 @@ export function Desktop() {
   }
   if (!me) return <Navigate to="/login" replace />;
 
-  if (isMobile) return <MobileShell me={me} />;
+  // MobileShell needs the provider too: app bodies (e.g. Dashboard) call
+  // useWindows() even though the mobile shell renders no AppWindows.
+  if (isMobile) {
+    return (
+      <WindowProvider>
+        <MobileShell me={me} />
+      </WindowProvider>
+    );
+  }
 
   return (
     <WindowProvider>

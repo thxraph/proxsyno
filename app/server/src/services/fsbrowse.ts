@@ -118,24 +118,25 @@ export async function listDir(clientPath: string): Promise<DirListing> {
   }
 
   const dirents = await fs.readdir(dir, { withFileTypes: true });
-  const entries: DirEntry[] = [];
-  for (const d of dirents) {
-    const full = path.join(dir, d.name);
-    try {
-      // lstat so we report symlinks as symlinks rather than their target.
-      const s = await fs.lstat(full);
-      entries.push({
-        name: d.name,
-        type: classify(s),
-        sizeBytes: s.size,
-        mtimeMs: Math.round(s.mtimeMs),
-        mode: s.mode & 0o7777,
-      });
-    } catch {
-      // Unreadable entry (e.g. permission) — surface name with zeros.
-      entries.push({ name: d.name, type: "file", sizeBytes: 0, mtimeMs: 0, mode: 0 });
-    }
-  }
+  const entries: DirEntry[] = await Promise.all(
+    dirents.map(async (d): Promise<DirEntry> => {
+      const full = path.join(dir, d.name);
+      try {
+        // lstat so we report symlinks as symlinks rather than their target.
+        const s = await fs.lstat(full);
+        return {
+          name: d.name,
+          type: classify(s),
+          sizeBytes: s.size,
+          mtimeMs: Math.round(s.mtimeMs),
+          mode: s.mode & 0o7777,
+        };
+      } catch {
+        // Unreadable entry (e.g. permission) — surface name with zeros.
+        return { name: d.name, type: "file", sizeBytes: 0, mtimeMs: 0, mode: 0 };
+      }
+    }),
+  );
 
   // Directories first, then case-insensitive name order.
   entries.sort((a, b) => {

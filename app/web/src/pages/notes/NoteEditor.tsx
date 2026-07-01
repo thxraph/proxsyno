@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Columns2, Eye, Pencil, Save, Tag, Trash2 } from 'lucide-react';
-import { api, ApiError } from '../../api/client';
+import { api, errMsg } from '../../api/client';
 import { cx } from '../../lib/format';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { MARKDOWN_CSS, renderMarkdown } from './markdown';
@@ -35,9 +35,11 @@ export function NoteEditor({
   const [error, setError] = useState<string | null>(null);
 
   const tags = textToTags(tagsText);
+  // Compare with the same normalization the save applies, so e.g. a trailing
+  // space doesn't leave the editor permanently dirty.
   const dirty =
-    title !== note.title ||
-    notebook.trim() !== note.notebook ||
+    (title.trim() || 'Untitled') !== note.title ||
+    (notebook.trim() || 'My Notebook') !== note.notebook ||
     body !== note.body ||
     tagsToText(tags) !== tagsToText(note.tags);
 
@@ -57,7 +59,7 @@ export function NoteEditor({
       qc.invalidateQueries({ queryKey: ['note', note.id] });
       onSaved();
     },
-    onError: (e) => setError(e instanceof ApiError ? e.message : 'Failed to save note'),
+    onError: (e) => setError(errMsg(e, 'Failed to save note')),
   });
 
   const delMut = useMutation({
@@ -67,7 +69,7 @@ export function NoteEditor({
       setConfirmDelete(false);
       onDeleted();
     },
-    onError: (e) => setError(e instanceof ApiError ? e.message : 'Failed to delete note'),
+    onError: (e) => setError(errMsg(e, 'Failed to delete note')),
   });
 
   return (

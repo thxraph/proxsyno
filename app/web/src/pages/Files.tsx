@@ -13,9 +13,10 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react';
-import { api, ApiError } from '../api/client';
+import { api, errMsg } from '../api/client';
 import type { FileEntry, FileListResponse } from '../lib/types';
 import { cx, formatBytes, formatDate } from '../lib/format';
+import { FILES_ROOT, joinPath, parentPath } from '../lib/paths';
 import { PageHeader } from '../components/PageHeader';
 import { DataTable, type Column } from '../components/DataTable';
 import { Badge } from '../components/Badge';
@@ -24,24 +25,9 @@ import { FormField } from '../components/FormField';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ErrorState, LoadingState } from '../components/states';
 
-const ROOT = '/mnt';
-
-function joinPath(base: string, name: string): string {
-  return base.endsWith('/') ? `${base}${name}` : `${base}/${name}`;
-}
-
-function parentPath(path: string): string {
-  if (path === ROOT || path === '/') return ROOT;
-  const trimmed = path.replace(/\/+$/, '');
-  const idx = trimmed.lastIndexOf('/');
-  const parent = idx <= 0 ? '/' : trimmed.slice(0, idx);
-  // Never climb above the jail root.
-  return parent.length < ROOT.length ? ROOT : parent;
-}
-
 export function Files() {
   const qc = useQueryClient();
-  const [path, setPath] = useState(ROOT);
+  const [path, setPath] = useState(FILES_ROOT);
   const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -54,22 +40,25 @@ export function Files() {
     queryFn: () => api.get<FileListResponse>(`/files/list?path=${encodeURIComponent(path)}`),
   });
 
+  // Invalidate the directory the mutation actually touched (from its variables),
+  // not the current `path` state — the user may have navigated away meanwhile.
   const uploadMut = useMutation({
-    mutationFn: (files: File[]) =>
-      api.upload(`/files/upload?path=${encodeURIComponent(path)}`, files),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['files', path] }),
+    mutationFn: ({ files, dir }: { files: File[]; dir: string }) =>
+      api.upload(`/files/upload?path=${encodeURIComponent(dir)}`, files),
+    onSuccess: (_data, { dir }) => qc.invalidateQueries({ queryKey: ['files', dir] }),
   });
 
   const deleteMut = useMutation({
     mutationFn: (target: string) => api.post<void>('/files/delete', { path: target }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['files', path] }),
+    onSuccess: (_data, target) =>
+      qc.invalidateQueries({ queryKey: ['files', parentPath(target)] }),
   });
 
   const onDrop = (e: DragEvent) => {
     e.preventDefault();
     setDragging(false);
     const files = Array.from(e.dataTransfer.files);
-    if (files.length) uploadMut.mutate(files);
+    if (files.length) uploadMut.mutate({ files, dir: path });
   };
 
   const segments = path.replace(/\/+$/, '').split('/').filter(Boolean);
@@ -185,7 +174,7 @@ export function Files() {
               className="hidden"
               onChange={(e) => {
                 const files = Array.from(e.target.files ?? []);
-                if (files.length) uploadMut.mutate(files);
+                if (files.length) uploadMut.mutate({ files, dir: path });
                 e.target.value = '';
               }}
             />
@@ -197,7 +186,7 @@ export function Files() {
       <nav className="mb-3 flex flex-wrap items-center gap-1 text-sm">
         <button
           className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-          onClick={() => setPath(ROOT)}
+          onClick={() => setPath(FILES_ROOT)}
         >
           <HardDrive className="h-4 w-4" /> root
         </button>
@@ -227,7 +216,7 @@ export function Files() {
       {uploadMut.isError && (
         <div className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
           Upload failed:{' '}
-          {uploadMut.error instanceof ApiError ? uploadMut.error.message : 'unknown error'}
+          {errMsg(uploadMut.error, 'unknown error')}
         </div>
       )}
 
@@ -250,7 +239,7 @@ export function Files() {
           </div>
         )}
 
-        {path !== ROOT && (
+        {path !== FILES_ROOT && (
           <button
             className="mb-3 inline-flex items-center gap-2 text-sm text-slate-500 hover:text-accent-600 dark:text-slate-400"
             onClick={() => setPath(parentPath(path))}
@@ -315,7 +304,7 @@ function MkdirModal({ basePath, onClose }: { basePath: string; onClose: () => vo
       qc.invalidateQueries({ queryKey: ['files', basePath] });
       onClose();
     },
-    onError: (e) => setError(e instanceof ApiError ? e.message : 'Failed to create folder'),
+    onError: (e) => setError(errMsg(e, 'Failed to create folder')),
   });
 
   const onSubmit = () => {
@@ -351,7 +340,7 @@ function MkdirModal({ basePath, onClose }: { basePath: string; onClose: () => vo
           value={name}
           autoFocus
           onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && onSubmit()}
+          onKeyDown={(e) => e.key === 'Enter' && !mut.isPending && onSubmit()}
           placeholder="new-folder"
         />
       </FormField>
@@ -385,7 +374,7 @@ function RenameModal({
       qc.invalidateQueries({ queryKey: ['files', basePath] });
       onClose();
     },
-    onError: (e) => setError(e instanceof ApiError ? e.message : 'Failed to rename'),
+    onError: (e) => setError(errMsg(e, 'Failed to rename')),
   });
 
   const onSubmit = () => {
@@ -425,7 +414,7 @@ function RenameModal({
           value={name}
           autoFocus
           onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && onSubmit()}
+          onKeyDown={(e) => e.key === 'Enter' && !mut.isPending && onSubmit()}
         />
       </FormField>
     </Modal>
