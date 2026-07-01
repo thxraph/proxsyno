@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { cx } from '../lib/format';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 export interface Column<T> {
   key: string;
@@ -37,6 +38,60 @@ export function DataTable<T>({
   onRowClick,
   className,
 }: DataTableProps<T>) {
+  const isMobile = useIsMobile();
+
+  // On phones a wide table forces horizontal scrolling. Render each row as a
+  // stacked card of label/value pairs instead — the column header is the label,
+  // the cell is the value. Columns with no header (e.g. an actions column) take
+  // the full width.
+  if (isMobile) {
+    return (
+      <div className={cx('flex flex-col gap-2', className)}>
+        {rows.length === 0 ? (
+          <div className="card px-4 py-10 text-center text-sm text-slate-500 dark:text-slate-400">
+            {emptyMessage}
+          </div>
+        ) : (
+          rows.map((row) => {
+            const depth = rowDepth ? rowDepth(row) : 0;
+            return (
+              <div
+                key={rowKey(row)}
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                style={depth ? { marginLeft: `${depth * 12}px` } : undefined}
+                className={cx(
+                  'card divide-y divide-slate-100 dark:divide-slate-800/70',
+                  onRowClick && 'cursor-pointer active:bg-slate-50 dark:active:bg-slate-800/50',
+                )}
+              >
+                {columns.map((c) => {
+                  const hasHeader = c.header !== null && c.header !== undefined && c.header !== '';
+                  return (
+                    <div key={c.key} className="flex items-start justify-between gap-3 px-3 py-2">
+                      {hasHeader && (
+                        <span className="shrink-0 pt-0.5 text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                          {c.header}
+                        </span>
+                      )}
+                      <span
+                        className={cx(
+                          'min-w-0 text-sm text-slate-700 dark:text-slate-200',
+                          hasHeader ? 'text-right' : 'flex-1',
+                        )}
+                      >
+                        {c.render(row)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className={cx('card overflow-hidden', className)}>
       <div className="overflow-x-auto">
