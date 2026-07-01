@@ -124,7 +124,9 @@ Manage it like any service: `systemctl status proxsyno`, `journalctl -u proxsyno
 > `Secure` by default (a `Secure` cookie would be dropped by browsers over
 > `http://` and login would silently fail). Put the app behind a **TLS reverse
 > proxy** before exposing it beyond your LAN, and then set `COOKIE_SECURE=true`
-> in `/etc/proxsyno/proxsyno.env` — see [`docs/roadmap.md`](docs/roadmap.md).
+> in `/etc/proxsyno/proxsyno.env`. Ready-to-use Caddy and nginx configs are in
+> [`deploy/reverse-proxy/`](deploy/reverse-proxy/) — that also enables the
+> `__Host-` cookie prefix and HSTS.
 
 #### Login troubleshooting
 

@@ -1,0 +1,41 @@
+# proxsyno — TLS reverse proxy (Caddy v2)
+#
+# Caddy is the easiest option: it provisions and renews the certificate for you
+# (Let's Encrypt for a public domain, or its own local CA for an internal name),
+# proxies WebSockets transparently, forwards the real client IP, and preserves
+# the Host header — all of which proxsyno needs. Replace nas.example.com below.
+#
+#   sudo apt install caddy                       # or the official Caddy apt repo
+#   sudoedit /etc/caddy/Caddyfile                # paste + edit the hostname
+#   sudo systemctl reload caddy
+#
+# THEN flip proxsyno onto HTTPS mode:
+#   echo 'COOKIE_SECURE=true' | sudo tee -a /etc/proxsyno/proxsyno.env
+#   sudo systemctl restart proxsyno
+#
+# This enables the Secure cookie, the __Host- cookie prefix, and HSTS.
+
+nas.example.com {
+	encode zstd gzip
+
+	# Match proxsyno's default MAX_UPLOAD_BYTES (5 GiB). Raise both together.
+	request_body {
+		max_size 5GB
+	}
+
+	# Caddy v2 keeps the incoming Host, sets X-Forwarded-For/Proto, and upgrades
+	# WebSockets automatically — no extra config needed for /ws/* consoles.
+	reverse_proxy 127.0.0.1:8800
+}
+
+# --- LAN-only, no public DNS? -------------------------------------------------
+# Use an internal hostname and let Caddy mint a cert from its own local CA
+# (install Caddy's root once so browsers trust it: `caddy trust`):
+#
+# nas.local {
+# 	tls internal
+# 	request_body {
+# 		max_size 5GB
+# 	}
+# 	reverse_proxy 127.0.0.1:8800
+# }
