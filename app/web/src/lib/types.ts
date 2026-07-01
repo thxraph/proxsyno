@@ -125,6 +125,8 @@ export interface SmbShare {
   readOnly: boolean;
   guestOk: boolean;
   validUsers: string[];
+  /** false for hand-authored shares defined outside proxsyno (read-only in UI). */
+  managed: boolean;
 }
 
 export interface NfsClient {

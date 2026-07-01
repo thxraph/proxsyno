@@ -109,7 +109,7 @@ with appropriate HTTP status. Auth via cookie `proxsyno_session`.
 - `POST /api/storage/scrub/:array/cancel` → aborts a running scrub (writes `idle`). → 204.
 
 ### Shares
-- `GET    /api/shares` → `{smb:[{name, path, comment?, readOnly, guestOk, validUsers:string[]}], nfs:[{path, clients:[{host, options}]}]}`.
+- `GET    /api/shares` → `{smb:[{name, path, comment?, readOnly, guestOk, validUsers:string[], managed:boolean}], nfs:[{path, clients:[{host, options}]}]}`. Lists ALL smb.conf share sections (minus Samba's special `global`/`homes`/`printers`/`print$`); `managed:false` marks hand-authored shares outside proxsyno's markers (surfaced read-only — the UI hides edit/delete). `POST`/`PUT` refuse to shadow an unmanaged section of the same name (409).
 - `POST   /api/shares/smb` `{name, path, comment?, readOnly?, guestOk?, validUsers?:string[]}` → `201 {share}`. Writes a managed block in `/etc/samba/smb.conf` and reloads smbd.
 - `PUT    /api/shares/smb/:name` → update.
 - `DELETE /api/shares/smb/:name` → `204`.

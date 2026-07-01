@@ -54,6 +54,7 @@ function toSmbShare(name: string, body: z.infer<typeof smbUpdateSchema>): SmbSha
     readOnly: body.readOnly ?? false,
     guestOk: body.guestOk ?? false,
     validUsers: body.validUsers ?? [],
+    managed: true, // anything written through this path lives inside our markers
   };
 }
 

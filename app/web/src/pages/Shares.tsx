@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Network, Pencil, Plus, Server, Trash2 } from 'lucide-react';
+import { Lock, Network, Pencil, Plus, Server, Trash2 } from 'lucide-react';
 import { api, errMsg } from '../api/client';
 import type {
   NfsExport,
@@ -97,7 +97,16 @@ function SmbSection({ shares }: { shares: SmbShare[] }) {
     {
       key: 'name',
       header: 'Name',
-      render: (s) => <span className="font-medium text-slate-800 dark:text-slate-100">{s.name}</span>,
+      render: (s) => (
+        <span className="flex items-center gap-2">
+          <span className="font-medium text-slate-800 dark:text-slate-100">{s.name}</span>
+          {!s.managed && (
+            <Badge tone="neutral">
+              <Lock className="h-3 w-3" /> External
+            </Badge>
+          )}
+        </span>
+      ),
     },
     {
       key: 'path',
@@ -131,20 +140,28 @@ function SmbSection({ shares }: { shares: SmbShare[] }) {
       key: 'actions',
       header: '',
       align: 'right',
-      render: (s) => (
-        <div className="flex justify-end gap-1">
-          <button className="btn-ghost h-8 w-8 p-0" onClick={() => setEditing(s)} title="Edit">
-            <Pencil className="h-4 w-4" />
-          </button>
-          <button
-            className="btn-ghost h-8 w-8 p-0 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10"
-            onClick={() => setToDelete(s)}
-            title="Delete"
+      render: (s) =>
+        s.managed ? (
+          <div className="flex justify-end gap-1">
+            <button className="btn-ghost h-8 w-8 p-0" onClick={() => setEditing(s)} title="Edit">
+              <Pencil className="h-4 w-4" />
+            </button>
+            <button
+              className="btn-ghost h-8 w-8 p-0 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10"
+              onClick={() => setToDelete(s)}
+              title="Delete"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
+        ) : (
+          <span
+            className="text-xs text-slate-400"
+            title="Defined in smb.conf outside proxsyno — edit it there"
           >
-            <Trash2 className="h-4 w-4" />
-          </button>
-        </div>
-      ),
+            read-only
+          </span>
+        ),
     },
   ];
 

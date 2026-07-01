@@ -31,6 +31,8 @@ export interface SmbShare {
   readOnly: boolean;
   guestOk: boolean;
   validUsers: string[];
+  /** true if inside proxsyno markers (editable); false for hand-authored shares. */
+  managed: boolean;
 }
 
 export interface NfsClient {
@@ -98,39 +100,81 @@ function removeManagedBlock(content: string, name: string): string {
   return content.replace(block + "\n", "").replace(block, "");
 }
 
+// Samba's own special sections — not user file shares, so we hide them.
+const SPECIAL_SECTIONS = new Set(["global", "homes", "printers", "print$"]);
+
+/** Character ranges spanned by proxsyno-managed blocks, used to flag sections. */
+function managedRanges(content: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  const blockRe = /# >>> proxsyno managed: (\S+)\n[\s\S]*?\n# <<< proxsyno managed: \1/g;
+  let m: RegExpExecArray | null;
+  while ((m = blockRe.exec(content)) !== null) {
+    ranges.push([m.index, m.index + m[0].length]);
+  }
+  return ranges;
+}
+
 /**
- * Parse all proxsyno-managed SMB share blocks. We intentionally only surface
- * blocks WE manage (between markers) so the UI never shows hand-edited shares.
+ * Parse EVERY SMB share section (minus Samba's special ones), flagging which are
+ * proxsyno-managed. Hand-authored shares are surfaced read-only so the user can
+ * see what's exported; only managed blocks (inside markers) are editable.
  */
 export async function listSmbShares(): Promise<SmbShare[]> {
   const content = await readSmbConf();
+  const ranges = managedRanges(content);
+  const inManagedRange = (idx: number): boolean => ranges.some(([s, e]) => idx >= s && idx < e);
+
+  // Index every `[section]` header, then slice each section's body up to the next.
+  const headerRe = /^[ \t]*\[([^\]]+)\][ \t]*$/gm;
+  const headers: Array<{ name: string; headerIdx: number; bodyStart: number }> = [];
+  let hm: RegExpExecArray | null;
+  while ((hm = headerRe.exec(content)) !== null) {
+    headers.push({ name: hm[1]!.trim(), headerIdx: hm.index, bodyStart: headerRe.lastIndex });
+  }
+
   const shares: SmbShare[] = [];
-  const blockRe = /# >>> proxsyno managed: (\S+)\n([\s\S]*?)\n# <<< proxsyno managed: \1/g;
-  let m: RegExpExecArray | null;
-  while ((m = blockRe.exec(content)) !== null) {
-    const name = m[1]!;
-    const body = m[2]!;
+  for (let i = 0; i < headers.length; i++) {
+    const h = headers[i]!;
+    if (SPECIAL_SECTIONS.has(h.name.toLowerCase())) continue;
+    const bodyEnd = i + 1 < headers.length ? headers[i + 1]!.headerIdx : content.length;
+    const body = content.slice(h.bodyStart, bodyEnd);
     const getVal = (key: string): string | undefined => {
       const r = body.match(new RegExp(`^\\s*${key}\\s*=\\s*(.+)$`, "im"));
       return r ? r[1]!.trim() : undefined;
     };
-    const readOnlyRaw = getVal("read only");
+    const readOnlyRaw = getVal("read only") ?? getVal("writable") ?? getVal("writeable");
+    // "writable/writeable = yes" is the inverse of "read only".
+    const isWritableKey = getVal("read only") === undefined && (getVal("writable") ?? getVal("writeable")) !== undefined;
     const guestRaw = getVal("guest ok");
     const validUsersRaw = getVal("valid users");
     const share: SmbShare = {
-      name,
-      path: getVal("path") ?? "",
-      readOnly: readOnlyRaw ? /^(yes|true|1)$/i.test(readOnlyRaw) : false,
+      name: h.name,
+      path: getVal("path") ?? getVal("directory") ?? "",
+      readOnly: readOnlyRaw ? (isWritableKey ? !/^(yes|true|1)$/i.test(readOnlyRaw) : /^(yes|true|1)$/i.test(readOnlyRaw)) : false,
       guestOk: guestRaw ? /^(yes|true|1)$/i.test(guestRaw) : false,
       validUsers: validUsersRaw
         ? validUsersRaw.split(/[,\s]+/).map((u) => u.trim()).filter(Boolean)
         : [],
+      managed: inManagedRange(h.headerIdx),
     };
     const comment = getVal("comment");
     if (comment) share.comment = comment;
     shares.push(share);
   }
   return shares;
+}
+
+/** True if a `[name]` section exists OUTSIDE any proxsyno-managed block. */
+function hasUnmanagedSection(content: string, name: string): boolean {
+  const ranges = managedRanges(content);
+  const headerRe = /^[ \t]*\[([^\]]+)\][ \t]*$/gm;
+  let hm: RegExpExecArray | null;
+  while ((hm = headerRe.exec(content)) !== null) {
+    if (hm[1]!.trim() !== name) continue;
+    const idx = hm.index;
+    if (!ranges.some(([s, e]) => idx >= s && idx < e)) return true;
+  }
+  return false;
 }
 
 /**
@@ -187,6 +231,14 @@ async function reloadSmbd(): Promise<void> {
 export function upsertSmbShare(share: SmbShare): Promise<SmbShare> {
   return withLock(SMB_LOCK, async () => {
     const original = await readSmbConf();
+
+    // Refuse to shadow a hand-authored [name] section: writing a managed block
+    // with the same name would create a duplicate section in smb.conf.
+    if (hasUnmanagedSection(original, share.name)) {
+      throw ApiError.conflict(
+        `An SMB share named "${share.name}" already exists in smb.conf outside proxsyno's control. Rename it or remove it there first.`,
+      );
+    }
 
     // Remove any existing managed block for this name, then append the new one.
     let next = removeManagedBlock(original, share.name);
