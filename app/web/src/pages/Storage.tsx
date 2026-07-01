@@ -21,6 +21,10 @@ import type {
   ScrubSchedule,
   ScrubStatus,
   Smart,
+  SmartTestFrequency,
+  SmartTestSchedule,
+  SmartTestStatus,
+  SmartTestType,
   ZfsPool,
 } from '../lib/types';
 import { formatBytes, formatDate } from '../lib/format';
@@ -318,6 +322,9 @@ export function Storage() {
       {/* RAID scrub */}
       <ScrubSection />
 
+      {/* SMART self-tests */}
+      <SelfTestSection />
+
       {/* ZFS */}
       <section>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
@@ -569,6 +576,348 @@ function ScheduleModal({
           <option value="monthly">Monthly</option>
         </select>
       </FormField>
+
+      {frequency === 'weekly' && (
+        <FormField label="Weekday">
+          <select
+            className="input"
+            value={weekday}
+            onChange={(e) => setWeekday(Number(e.target.value))}
+          >
+            {WEEKDAYS.map((w, i) => (
+              <option key={w} value={i}>
+                {w}
+              </option>
+            ))}
+          </select>
+        </FormField>
+      )}
+
+      {frequency === 'monthly' && (
+        <FormField label="Day of month">
+          <select className="input" value={day} onChange={(e) => setDay(Number(e.target.value))}>
+            {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+        </FormField>
+      )}
+
+      {frequency !== 'disabled' && (
+        <div className="grid grid-cols-2 gap-3">
+          <FormField label="Hour">
+            <select
+              className="input"
+              value={hour}
+              onChange={(e) => setHour(Number(e.target.value))}
+            >
+              {Array.from({ length: 24 }, (_, i) => i).map((h) => (
+                <option key={h} value={h}>
+                  {pad2(h)}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          <FormField label="Minute">
+            <select
+              className="input"
+              value={minute}
+              onChange={(e) => setMinute(Number(e.target.value))}
+            >
+              {minuteOpts.map((m) => (
+                <option key={m} value={m}>
+                  {pad2(m)}
+                </option>
+              ))}
+            </select>
+          </FormField>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function selfTestScheduleSummary(s: SmartTestSchedule): string {
+  if (s.frequency === 'disabled') return 'Not scheduled';
+  const type = s.type === 'short' ? 'Short' : 'Long';
+  const time = `${pad2(s.hour)}:${pad2(s.minute)}`;
+  if (s.frequency === 'weekly') return `${type} · Weekly · ${WEEKDAYS[s.weekday]} ${time}`;
+  return `${type} · Monthly · day ${s.day} ${time}`;
+}
+
+function SelfTestSection() {
+  const q = useQuery({
+    queryKey: ['storage', 'selftest'],
+    queryFn: () => api.get<SmartTestStatus[]>('/storage/selftest'),
+    refetchInterval: (query) => {
+      const running = query.state.data?.some((s) => s.running);
+      return running ? 5000 : 30000;
+    },
+  });
+
+  const disks = q.data ?? [];
+
+  return (
+    <section className="mb-8">
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+        SMART self-tests
+      </h2>
+      {q.isLoading ? (
+        <LoadingState label="Reading self-test status…" />
+      ) : q.isError ? (
+        <ErrorState error={q.error} onRetry={() => q.refetch()} />
+      ) : disks.length === 0 ? (
+        <div className="card p-5 text-sm text-slate-500 dark:text-slate-400">No disks found.</div>
+      ) : (
+        <div className="flex flex-col gap-px">
+          {disks.map((s) => (
+            <SelfTestCard key={s.disk} status={s} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function SelfTestCard({ status }: { status: SmartTestStatus }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [confirmLong, setConfirmLong] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['storage', 'selftest'] });
+
+  const startMut = useMutation({
+    mutationFn: (type: SmartTestType) =>
+      api.post(`/storage/selftest/${status.disk}/start`, { type }),
+    onSuccess: () => {
+      invalidate();
+      setConfirmLong(false);
+    },
+  });
+  const cancelMut = useMutation({
+    mutationFn: () => api.post(`/storage/selftest/${status.disk}/cancel`),
+    onSuccess: () => {
+      invalidate();
+      setConfirmCancel(false);
+    },
+  });
+
+  const running = status.running;
+  const last = status.lastResult;
+
+  return (
+    <div className="card p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 space-y-2">
+          <div className="flex items-center gap-2 font-medium">
+            <HardDrive className="h-4 w-4 text-slate-400" aria-hidden />
+            {status.disk}
+          </div>
+
+          {running ? (
+            <div className="flex items-center gap-3">
+              <Badge tone="warning">Testing</Badge>
+              <ProgressBar
+                value={100 - running.remainingPct}
+                tone="warning"
+                showLabel
+                className="w-40"
+              />
+            </div>
+          ) : last ? (
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <Badge tone={last.passed ? 'success' : 'danger'}>
+                {last.passed ? 'Passed' : 'FAILED'}
+              </Badge>
+              <span className="text-slate-500 dark:text-slate-400">{last.status}</span>
+              {typeof last.lifetimeHours === 'number' && (
+                <span className="text-slate-500 dark:text-slate-400">
+                  at {last.lifetimeHours} h
+                </span>
+              )}
+            </div>
+          ) : (
+            <div className="text-xs text-slate-500 dark:text-slate-400">No self-tests logged</div>
+          )}
+
+          <div className="text-xs text-slate-500 dark:text-slate-400">
+            {selfTestScheduleSummary(status.schedule)}
+            {status.lastRunMs != null && <> · Last: {formatDate(status.lastRunMs)}</>}
+            {status.nextRunMs != null && <> · Next: {formatDate(status.nextRunMs)}</>}
+            {status.history.length > 0 && <> · {status.history.length} tests logged</>}
+          </div>
+        </div>
+
+        <div className="flex shrink-0 gap-2">
+          {running ? (
+            <button
+              type="button"
+              className="btn-danger"
+              onClick={() => setConfirmCancel(true)}
+              disabled={cancelMut.isPending}
+            >
+              <Square className="h-4 w-4" aria-hidden /> Cancel
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => startMut.mutate('short')}
+                disabled={startMut.isPending}
+              >
+                <Play className="h-4 w-4" aria-hidden /> Run short
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setConfirmLong(true)}
+                disabled={startMut.isPending}
+              >
+                <Play className="h-4 w-4" aria-hidden /> Run long
+              </button>
+            </>
+          )}
+          <button type="button" className="btn-secondary" onClick={() => setEditing(true)}>
+            <CalendarClock className="h-4 w-4" aria-hidden /> Edit schedule
+          </button>
+        </div>
+      </div>
+
+      {editing && (
+        <SelfTestScheduleModal
+          disk={status.disk}
+          initial={status.schedule}
+          onClose={() => setEditing(false)}
+        />
+      )}
+
+      <ConfirmDialog
+        open={confirmLong}
+        title="Run long self-test"
+        busy={startMut.isPending}
+        confirmLabel="Run long test"
+        cancelLabel="Cancel"
+        message={`A long self-test on ${status.disk} reads the entire drive surface and can take hours (safe/read-only, but heavy I/O).`}
+        onConfirm={() => startMut.mutate('long')}
+        onCancel={() => setConfirmLong(false)}
+      />
+
+      <ConfirmDialog
+        open={confirmCancel}
+        title="Cancel self-test"
+        destructive
+        busy={cancelMut.isPending}
+        confirmLabel="Cancel test"
+        cancelLabel="Keep running"
+        message={`Abort the in-progress self-test on ${status.disk}?`}
+        onConfirm={() => cancelMut.mutate()}
+        onCancel={() => setConfirmCancel(false)}
+      />
+    </div>
+  );
+}
+
+function SelfTestScheduleModal({
+  disk,
+  initial,
+  onClose,
+}: {
+  disk: string;
+  initial: SmartTestSchedule;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [frequency, setFrequency] = useState<SmartTestFrequency>(initial.frequency);
+  const [type, setType] = useState<SmartTestType>(initial.type);
+  const [weekday, setWeekday] = useState(initial.weekday);
+  const [day, setDay] = useState(initial.day);
+  const [hour, setHour] = useState(initial.hour);
+  const [minute, setMinute] = useState(initial.minute);
+  const [error, setError] = useState<string | null>(null);
+
+  const minuteOpts = MINUTES.includes(minute) ? MINUTES : [...MINUTES, minute].sort((a, b) => a - b);
+
+  const mut = useMutation({
+    mutationFn: () =>
+      api.put<SmartTestStatus>(`/storage/selftest/${disk}`, {
+        frequency,
+        type,
+        weekday,
+        day,
+        hour,
+        minute,
+      } satisfies SmartTestSchedule),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['storage', 'selftest'] });
+      onClose();
+    },
+    onError: (e) => setError(errMsg(e)),
+  });
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      busy={mut.isPending}
+      title={
+        <span className="flex items-center gap-2">
+          <CalendarClock className="h-4 w-4" aria-hidden /> Self-test schedule · {disk}
+        </span>
+      }
+      footer={
+        <>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={onClose}
+            disabled={mut.isPending}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => {
+              setError(null);
+              mut.mutate();
+            }}
+            disabled={mut.isPending}
+          >
+            <Save className="h-4 w-4" aria-hidden /> {mut.isPending ? 'Saving…' : 'Save'}
+          </button>
+        </>
+      }
+    >
+      {error && <SubmitError message={error} />}
+
+      <FormField label="Frequency">
+        <select
+          className="input"
+          value={frequency}
+          onChange={(e) => setFrequency(e.target.value as SmartTestFrequency)}
+        >
+          <option value="disabled">Disabled</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly">Monthly</option>
+        </select>
+      </FormField>
+
+      {frequency !== 'disabled' && (
+        <FormField label="Test type">
+          <select
+            className="input"
+            value={type}
+            onChange={(e) => setType(e.target.value as SmartTestType)}
+          >
+            <option value="short">Short</option>
+            <option value="long">Long</option>
+          </select>
+        </FormField>
+      )}
 
       {frequency === 'weekly' && (
         <FormField label="Weekday">

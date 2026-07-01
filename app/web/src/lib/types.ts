@@ -117,6 +117,33 @@ export interface ScrubStatus {
   nextRunMs?: number;
 }
 
+export type SmartTestType = 'short' | 'long';
+export type SmartTestFrequency = 'disabled' | 'weekly' | 'monthly';
+export interface SmartTestSchedule {
+  frequency: SmartTestFrequency;
+  type: SmartTestType;
+  weekday: number; // 0=Sun..6=Sat (weekly)
+  day: number;     // 1..28 (monthly)
+  hour: number;
+  minute: number;
+}
+export interface SmartTestResult {
+  num: number;
+  description: string;
+  status: string;
+  passed: boolean;
+  lifetimeHours?: number;
+}
+export interface SmartTestStatus {
+  disk: string;
+  running?: { remainingPct: number };
+  lastResult?: SmartTestResult;
+  history: SmartTestResult[];
+  schedule: SmartTestSchedule;
+  lastRunMs?: number;
+  nextRunMs?: number;
+}
+
 // ---- Shares ----
 export interface SmbShare {
   name: string;

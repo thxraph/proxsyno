@@ -11,6 +11,13 @@ import {
   startScrub,
   type ScrubSchedule,
 } from "../services/scrub.js";
+import {
+  cancelSelfTest,
+  getSelfTestStatus,
+  setSelfTestSchedule,
+  startSelfTest,
+  type SmartTestSchedule,
+} from "../services/smarttest.js";
 import { asyncHandler } from "../util/errors.js";
 
 export const storageRouter = Router();
@@ -28,6 +35,17 @@ const scrubScheduleSchema = z.object({
   hour: z.number().int().min(0).max(23),
   minute: z.number().int().min(0).max(59),
 });
+
+const selfTestScheduleSchema = z.object({
+  frequency: z.enum(["disabled", "weekly", "monthly"]),
+  type: z.enum(["short", "long"]),
+  weekday: z.number().int().min(0).max(6),
+  day: z.number().int().min(1).max(28),
+  hour: z.number().int().min(0).max(23),
+  minute: z.number().int().min(0).max(59),
+});
+
+const selfTestStartSchema = z.object({ type: z.enum(["short", "long"]) });
 
 // GET /api/storage/disks
 storageRouter.get(
@@ -96,6 +114,45 @@ storageRouter.post(
   asyncHandler(async (req, res) => {
     const array = arrayParam.parse(req.params.array);
     await cancelScrub(array);
+    res.status(204).end();
+  }),
+);
+
+// GET /api/storage/selftest
+storageRouter.get(
+  "/selftest",
+  asyncHandler(async (_req, res) => {
+    res.json(await getSelfTestStatus());
+  }),
+);
+
+// PUT /api/storage/selftest/:disk
+storageRouter.put(
+  "/selftest/:disk",
+  asyncHandler(async (req, res) => {
+    const disk = diskParam.parse(req.params.disk);
+    const body: SmartTestSchedule = selfTestScheduleSchema.parse(req.body);
+    res.json(await setSelfTestSchedule(disk, body));
+  }),
+);
+
+// POST /api/storage/selftest/:disk/start
+storageRouter.post(
+  "/selftest/:disk/start",
+  asyncHandler(async (req, res) => {
+    const disk = diskParam.parse(req.params.disk);
+    const body = selfTestStartSchema.parse(req.body);
+    await startSelfTest(disk, body.type);
+    res.status(204).end();
+  }),
+);
+
+// POST /api/storage/selftest/:disk/cancel
+storageRouter.post(
+  "/selftest/:disk/cancel",
+  asyncHandler(async (req, res) => {
+    const disk = diskParam.parse(req.params.disk);
+    await cancelSelfTest(disk);
     res.status(204).end();
   }),
 );

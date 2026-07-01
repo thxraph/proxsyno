@@ -107,6 +107,10 @@ with appropriate HTTP status. Auth via cookie `proxsyno_session`.
 - `PUT  /api/storage/scrub/:array` body `{frequency, weekday:0-6, day:1-28, hour:0-23, minute:0-59}` → writes the schedule to `/etc/proxsyno/scrub.json` and installs/removes a per-array systemd timer (`proxsyno-scrub@<md>.timer`) running `checkarray`. Returns the updated status. `:array` validated `^md\d+$` and against real arrays.
 - `POST /api/storage/scrub/:array/start` → begins a scrub now (writes `check` to the array's `sync_action`). 409 if the array is already syncing. → 204.
 - `POST /api/storage/scrub/:array/cancel` → aborts a running scrub (writes `idle`). → 204.
+- `GET  /api/storage/selftest` → `[{disk, running?:{remainingPct}, lastResult?:{num,description,status,passed,lifetimeHours?}, history:[...], schedule:{frequency:"disabled"|"weekly"|"monthly", type:"short"|"long", weekday, day, hour, minute}, lastRunMs?, nextRunMs?}]` — per physical disk: SMART self-test log + execution status via `smartctl -c -l selftest`, the managed schedule, and the systemd timer's last/next run.
+- `PUT  /api/storage/selftest/:disk` body `{frequency, type:"short"|"long", weekday:0-6, day:1-28, hour:0-23, minute:0-59}` → writes the schedule to `/etc/proxsyno/selftests.json` and installs/removes a per-disk systemd timer (`proxsyno-selftest-<disk>.timer`) running `smartctl -t <type>`. Returns the updated status. `:disk` validated and checked against real block devices.
+- `POST /api/storage/selftest/:disk/start` body `{type:"short"|"long"}` → begins a self-test now (`smartctl -t`). 409 if one is already running. → 204.
+- `POST /api/storage/selftest/:disk/cancel` → aborts a running self-test (`smartctl -X`). → 204.
 
 ### Shares
 - `GET    /api/shares` → `{smb:[{name, path, comment?, readOnly, guestOk, validUsers:string[], managed:boolean}], nfs:[{path, clients:[{host, options}]}]}`. Lists ALL smb.conf share sections (minus Samba's special `global`/`homes`/`printers`/`print$`); `managed:false` marks hand-authored shares outside proxsyno's markers (surfaced read-only — the UI hides edit/delete). `POST`/`PUT` refuse to shadow an unmanaged section of the same name (409).
@@ -145,7 +149,9 @@ DSM-like but clean and modern (don't pixel-copy Synology — own look):
   badge, storage usage summary, quick links.
 - **Storage:** disk tree table, RAID status (with sync progress bar), ZFS pools,
   SMART health badges, per-array RAID scrub scheduling (frequency/time), run-now
-  and cancel, with live check progress and mismatch count.
+  and cancel, with live check progress and mismatch count; per-disk SMART
+  self-test scheduling (short/long) with run-now, cancel, and pass/fail history;
+  failed tests surfaced on the Dashboard.
 - **Shares:** tabbed SMB / NFS; table + create/edit modal (zod-validated forms).
 - **Users:** table; create/edit modal with group multiselect + "enable SMB" toggle.
 - **Files:** breadcrumb + table; upload (drag-drop), download, mkdir, rename, delete.

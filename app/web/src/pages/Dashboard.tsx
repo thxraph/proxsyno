@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useWindows } from '../components/desktop/windowManager';
 import {
   Activity,
+  AlertTriangle,
   ArrowDownToLine,
   ArrowUpFromLine,
   Clock,
@@ -13,7 +14,7 @@ import {
   Network,
 } from 'lucide-react';
 import { api } from '../api/client';
-import type { System, ZfsPool } from '../lib/types';
+import type { SmartTestStatus, System, ZfsPool } from '../lib/types';
 import { useSystemWs } from '../hooks/useSystemWs';
 import {
   cx,
@@ -67,6 +68,15 @@ export function Dashboard() {
     queryKey: ['storage', 'zfs'],
     queryFn: () => api.get<ZfsPool[]>('/storage/zfs'),
   });
+
+  const selfTestQ = useQuery({
+    queryKey: ['storage', 'selftest'],
+    queryFn: () => api.get<SmartTestStatus[]>('/storage/selftest'),
+  });
+
+  const failedSelfTests = (selfTestQ.data ?? []).filter(
+    (d) => d.lastResult && !d.lastResult.passed,
+  );
 
   const system = systemQ.data;
 
@@ -182,6 +192,19 @@ export function Dashboard() {
           subtitle={`${system?.cpu.cores ?? '—'} cores · 1m / 5m / 15m`}
         />
       </div>
+
+      {/* SMART self-test failures */}
+      {failedSelfTests.length > 0 && (
+        <div className="card mt-6 flex items-center gap-3 border-l-2 border-rose-500 p-4 text-sm">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-rose-500" aria-hidden />
+          <span className="text-slate-700 dark:text-slate-200">
+            SMART self-test failed:{' '}
+            <span className="font-medium text-rose-500">
+              {failedSelfTests.map((d) => d.disk).join(', ')}
+            </span>
+          </span>
+        </div>
+      )}
 
       {/* Storage usage summary */}
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
