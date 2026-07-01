@@ -99,6 +99,24 @@ export interface Smart {
   raw?: string;
 }
 
+export type ScrubFrequency = 'disabled' | 'weekly' | 'monthly';
+export interface ScrubSchedule {
+  frequency: ScrubFrequency;
+  weekday: number; // 0=Sun..6=Sat (weekly)
+  day: number;     // 1..28 (monthly)
+  hour: number;
+  minute: number;
+}
+export interface ScrubStatus {
+  array: string;       // "md0"
+  syncAction: string;  // idle | check | repair | resync | recover | reshape | frozen
+  progressPct?: number;
+  mismatchCnt: number;
+  schedule: ScrubSchedule;
+  lastRunMs?: number;
+  nextRunMs?: number;
+}
+
 // ---- Shares ----
 export interface SmbShare {
   name: string;

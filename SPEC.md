@@ -103,6 +103,10 @@ with appropriate HTTP status. Auth via cookie `proxsyno_session`.
 - `GET /api/storage/raid` → `[{device, level, state, sizeBytes, active, total, syncPct?}]` (parse `/proc/mdstat` + `mdadm --detail`).
 - `GET /api/storage/zfs` → `[{pool, sizeBytes, allocBytes, freeBytes, health, capPct}]` (`zpool list -Hp`); empty if no zfs.
 - `GET /api/storage/smart/:disk` → `{device, healthy:boolean, temperatureC?, powerOnHours?, raw?:string}` (`smartctl -H -A`); degrade gracefully if smartctl missing.
+- `GET  /api/storage/scrub` → `[{array, syncAction, progressPct?, mismatchCnt, schedule:{frequency:"disabled"|"weekly"|"monthly", weekday, day, hour, minute}, lastRunMs?, nextRunMs?}]` — per md array: live scrub state from `/sys/block/<md>/md/{sync_action,sync_completed,mismatch_cnt}`, plus the managed schedule and systemd timer's last/next run.
+- `PUT  /api/storage/scrub/:array` body `{frequency, weekday:0-6, day:1-28, hour:0-23, minute:0-59}` → writes the schedule to `/etc/proxsyno/scrub.json` and installs/removes a per-array systemd timer (`proxsyno-scrub@<md>.timer`) running `checkarray`. Returns the updated status. `:array` validated `^md\d+$` and against real arrays.
+- `POST /api/storage/scrub/:array/start` → begins a scrub now (writes `check` to the array's `sync_action`). 409 if the array is already syncing. → 204.
+- `POST /api/storage/scrub/:array/cancel` → aborts a running scrub (writes `idle`). → 204.
 
 ### Shares
 - `GET    /api/shares` → `{smb:[{name, path, comment?, readOnly, guestOk, validUsers:string[]}], nfs:[{path, clients:[{host, options}]}]}`.
@@ -140,7 +144,8 @@ DSM-like but clean and modern (don't pixel-copy Synology — own look):
 - **Dashboard:** live CPU/mem/net cards (from `/ws/system`), uptime, OS/Proxmox
   badge, storage usage summary, quick links.
 - **Storage:** disk tree table, RAID status (with sync progress bar), ZFS pools,
-  SMART health badges.
+  SMART health badges, per-array RAID scrub scheduling (frequency/time), run-now
+  and cancel, with live check progress and mismatch count.
 - **Shares:** tabbed SMB / NFS; table + create/edit modal (zod-validated forms).
 - **Users:** table; create/edit modal with group multiselect + "enable SMB" toggle.
 - **Files:** breadcrumb + table; upload (drag-drop), download, mkdir, rename, delete.

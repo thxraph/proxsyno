@@ -86,6 +86,7 @@ export const config = {
 
   smbConfPath: envStr("SMB_CONF", "/etc/samba/smb.conf"),
   nfsExportsPath: envStr("NFS_EXPORTS", "/etc/exports"),
+  scrubStatePath: envStr("SCRUB_STATE", "/etc/proxsyno/scrub.json"),
 
   // Base URL of the Frigate NVR (LXC 100). Proxied by /api/surveillance/*; the
   // browser never talks to Frigate directly. Defaults to loopback — override
