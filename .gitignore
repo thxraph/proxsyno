@@ -17,3 +17,6 @@ tmp/
 !.env.example
 *.pem
 *.key
+
+# local planning notes
+docs/fable_plan.md
