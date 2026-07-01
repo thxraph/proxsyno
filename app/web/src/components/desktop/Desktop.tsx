@@ -1,5 +1,8 @@
+import { useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Navigate } from 'react-router-dom';
-import type { User } from '../../lib/types';
+import { api } from '../../api/client';
+import type { System, User } from '../../lib/types';
 import { useMe } from '../../hooks/useAuth';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { LoadingState } from '../states';
@@ -15,6 +18,19 @@ import { WindowProvider, useWindows } from './windowManager';
 export function Desktop() {
   const { data: me, isLoading } = useMe();
   const isMobile = useIsMobile();
+
+  // Put the node name in the tab title ("<node> - proxsyno") so it's obvious
+  // which host a tab belongs to. Shares the ['system'] cache with the Dashboard.
+  const sysQ = useQuery({
+    queryKey: ['system'],
+    queryFn: () => api.get<System>('/system'),
+    enabled: !!me,
+    staleTime: 5 * 60 * 1000,
+  });
+  useEffect(() => {
+    const host = sysQ.data?.hostname;
+    document.title = host ? `${host} - proxsyno` : 'proxsyno';
+  }, [sysQ.data]);
 
   if (isLoading) {
     return (
