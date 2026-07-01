@@ -28,6 +28,7 @@ import { photosRouter } from "./routes/photos.js";
 import { notesRouter } from "./routes/notes.js";
 import { surveillanceRouter } from "./routes/surveillance.js";
 import { prefsRouter } from "./routes/prefs.js";
+import { consoleRouter } from "./routes/console.js";
 import { SystemSampler } from "./services/system.js";
 import {
   isScriptInCatalog,
@@ -35,12 +36,7 @@ import {
   SCRIPT_SLUG_REGEX,
   type ConsolePty,
 } from "./services/proxmox.js";
-import {
-  bridgeToVnc,
-  createVncProxy,
-  parseConsoleParams,
-  type VncProxy,
-} from "./services/pveconsole.js";
+import { bridgeToVnc, consumeProxy } from "./services/pveconsole.js";
 import { errorHandler, notFoundHandler } from "./util/errors.js";
 import { securityHeaders, verifyOrigin, isSameOrigin } from "./util/security.js";
 
@@ -90,6 +86,7 @@ api.use("/photos", photosRouter);
 api.use("/notes", notesRouter);
 api.use("/surveillance", surveillanceRouter);
 api.use("/prefs", prefsRouter);
+api.use("/console", consoleRouter);
 
 // Unknown /api/* path → JSON 404 (before the SPA fallback).
 api.use(notFoundHandler);
@@ -324,41 +321,17 @@ consoleWss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
 
 pveConsoleWss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
   markAlive(ws);
-  void (async () => {
-    const url = new URL(req.url ?? "", "http://localhost");
-    const params = parseConsoleParams(url.searchParams);
-    if (!params) {
-      sendJson(ws, { type: "error", message: "Invalid console parameters" });
-      ws.close();
-      return;
-    }
-
-    let proxy: VncProxy;
-    try {
-      proxy = await createVncProxy(params);
-    } catch (err) {
-      sendJson(ws, {
-        type: "error",
-        message: `Failed to open VNC proxy: ${err instanceof Error ? err.message : String(err)}`,
-      });
-      ws.close();
-      return;
-    }
-
-    // Client may have gone away while pvesh was running.
-    if (ws.readyState !== ws.OPEN) return;
-
-    // 1) one JSON text control frame carrying the VNC password, then
-    // 2) hand the socket to the raw binary bridge for noVNC.
-    ws.send(JSON.stringify({ type: "vnc-ticket", ticket: proxy.ticket }));
-    bridgeToVnc(ws, proxy);
-  })().catch((err) => {
-    sendJson(ws, {
-      type: "error",
-      message: `Console error: ${err instanceof Error ? err.message : String(err)}`,
-    });
-    ws.close();
-  });
+  // The proxy was minted by POST /api/console/vnc; swap the one-time token for it
+  // and bridge raw RFB bytes. noVNC owns the socket from open, so we send nothing
+  // ourselves — the first bytes it sees are the vncterm's RFB banner.
+  const url = new URL(req.url ?? "", "http://localhost");
+  const token = url.searchParams.get("token") ?? "";
+  const proxy = consumeProxy(token);
+  if (!proxy) {
+    ws.close(1008, "invalid or expired console token");
+    return;
+  }
+  bridgeToVnc(ws, proxy);
 });
 
 // ---------------------------------------------------------------------------

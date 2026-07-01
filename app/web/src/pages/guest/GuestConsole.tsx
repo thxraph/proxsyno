@@ -2,16 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Keyboard, MonitorPlay, RefreshCw } from 'lucide-react';
 import RFB from '@novnc/novnc';
 import type { Guest } from '../../lib/types';
+import { api } from '../../api/client';
 import { Badge } from '../../components/Badge';
 import { cx } from '../../lib/format';
 
 type Status = 'connecting' | 'connected' | 'disconnected' | 'error';
-
-interface TicketFrame {
-  type?: string;
-  ticket?: string;
-  message?: string;
-}
 
 function wsUrl(path: string): string {
   const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
@@ -44,48 +39,39 @@ export function GuestConsole({ guest }: { guest: Guest }) {
     let disposed = false;
     let rfb: RFB | null = null;
 
-    const path =
-      `/ws/pve/console?node=${encodeURIComponent(guest.node)}` +
-      `&type=${guest.type}&vmid=${guest.vmid}`;
-
-    let ws: WebSocket;
-    try {
-      ws = new WebSocket(wsUrl(path));
-    } catch {
-      setStatus('error');
-      setErrorMsg('Failed to open console socket');
-      return;
-    }
-    ws.binaryType = 'arraybuffer';
-
-    const onFirstMessage = (ev: MessageEvent) => {
-      if (disposed) return;
-      // The handshake frame is text; once consumed we step aside and let RFB
-      // take over the socket's onmessage.
-      ws.removeEventListener('message', onFirstMessage);
-
-      let frame: TicketFrame;
+    // Two-step handshake: mint the proxy over REST (returns the VNC password and
+    // a one-time token), then let noVNC open the WebSocket itself with that token
+    // — noVNC starts the RFB handshake on the socket's `open` event, so it MUST
+    // own the socket from the start (it can't adopt an already-open one).
+    void (async () => {
+      let ticket: string;
+      let token: string;
       try {
-        frame = JSON.parse(typeof ev.data === 'string' ? ev.data : '') as TicketFrame;
-      } catch {
-        setStatus('error');
-        setErrorMsg('Malformed console handshake');
-        ws.close();
-        return;
-      }
-      if (frame.type === 'error' || !frame.ticket) {
-        setStatus('error');
-        setErrorMsg(frame.message ?? 'Console unavailable');
-        ws.close();
-        return;
-      }
-
-      try {
-        rfb = new RFB(el, ws, { credentials: { password: frame.ticket } });
+        const r = await api.post<{ ticket: string; token: string }>('/console/vnc', {
+          node: guest.node,
+          type: guest.type,
+          vmid: guest.vmid,
+        });
+        ticket = r.ticket;
+        token = r.token;
       } catch (err) {
-        setStatus('error');
-        setErrorMsg(err instanceof Error ? err.message : 'noVNC init failed');
-        ws.close();
+        if (!disposed) {
+          setStatus('error');
+          setErrorMsg(err instanceof Error ? err.message : 'Failed to open console');
+        }
+        return;
+      }
+      if (disposed) return;
+
+      try {
+        rfb = new RFB(el, wsUrl(`/ws/pve/console?token=${encodeURIComponent(token)}`), {
+          credentials: { password: ticket },
+        });
+      } catch (err) {
+        if (!disposed) {
+          setStatus('error');
+          setErrorMsg(err instanceof Error ? err.message : 'noVNC init failed');
+        }
         return;
       }
       rfbRef.current = rfb;
@@ -107,34 +93,15 @@ export function GuestConsole({ guest }: { guest: Guest }) {
         setStatus('error');
         setErrorMsg(reason ? `Authentication failed: ${reason}` : 'Authentication failed');
       });
-    };
-
-    ws.addEventListener('message', onFirstMessage);
-    ws.addEventListener('error', () => {
-      // Only meaningful before RFB takes over; afterwards RFB reports state.
-      if (disposed || rfbRef.current) return;
-      setStatus('error');
-      setErrorMsg('Console connection error');
-    });
-    ws.addEventListener('close', () => {
-      if (disposed || rfbRef.current) return;
-      setStatus((s) => (s === 'error' ? s : 'disconnected'));
-    });
+    })();
 
     return () => {
       disposed = true;
-      ws.removeEventListener('message', onFirstMessage);
       if (rfb) {
         try {
           rfb.disconnect();
         } catch {
           /* already gone */
-        }
-      } else {
-        try {
-          ws.close();
-        } catch {
-          /* not yet open */
         }
       }
       rfbRef.current = null;

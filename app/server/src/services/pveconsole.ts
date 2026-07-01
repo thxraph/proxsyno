@@ -21,6 +21,7 @@
  * second REST call) lets the SAME proxy be used end-to-end and keeps the ws
  * query params limited to node/type/vmid.
  */
+import { randomBytes } from "node:crypto";
 import https from "node:https";
 import net from "node:net";
 import type { WebSocket } from "ws";
@@ -147,6 +148,42 @@ export async function createVncProxy(params: ConsoleParams): Promise<VncProxy> {
   }
   if (!ticket) throw new Error("vncproxy returned no ticket");
   return { port, ticket };
+}
+
+// ---------------------------------------------------------------------------
+// One-time token store correlating the REST mint step to the WS bridge.
+//
+// noVNC must own the WebSocket from the moment it opens (it starts the RFB
+// handshake on the socket's `open` event), so we can't hand it an already-open
+// socket or send a text frame over it. Instead the browser first POSTs to mint
+// a proxy and gets back { ticket, token }; it then opens the RFB WebSocket with
+// ?token=..., and the WS handler swaps the token for the pre-created proxy and
+// bridges raw bytes only. Tokens are single-use and short-lived.
+// ---------------------------------------------------------------------------
+
+interface PendingProxy {
+  proxy: VncProxy;
+  expiresAt: number;
+}
+const pending = new Map<string, PendingProxy>();
+const TOKEN_TTL_MS = 30_000;
+
+/** Store a freshly-minted proxy under a new one-time token; returns the token. */
+export function registerProxy(proxy: VncProxy): string {
+  const token = randomBytes(24).toString("base64url");
+  const now = Date.now();
+  for (const [k, v] of pending) if (v.expiresAt <= now) pending.delete(k); // opportunistic sweep
+  pending.set(token, { proxy, expiresAt: now + TOKEN_TTL_MS });
+  return token;
+}
+
+/** Consume a token exactly once; returns its proxy, or null if unknown/expired. */
+export function consumeProxy(token: string): VncProxy | null {
+  const entry = pending.get(token);
+  if (!entry) return null;
+  pending.delete(token);
+  if (entry.expiresAt <= Date.now()) return null;
+  return entry.proxy;
 }
 
 /**
