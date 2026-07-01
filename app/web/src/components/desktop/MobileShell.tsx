@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Cpu, LogOut, MemoryStick } from 'lucide-react';
 import type { User } from '../../lib/types';
 import { useLogout } from '../../hooks/useAuth';
 import { useSystemWs } from '../../hooks/useSystemWs';
+import { LoadingState } from '../states';
 import { useApps, APP_MAP } from './appRegistry';
 
 // Full-screen mobile shell: a home launcher (app grid) and one full-screen app at
@@ -44,7 +45,9 @@ export function MobileShell({ me }: { me: User }) {
           <div className="h-10 w-16 shrink-0" aria-hidden />
         </header>
         <main className="min-h-0 flex-1 overflow-auto bg-zinc-950 p-3">
-          <Body />
+          <Suspense fallback={<LoadingState label="Loading…" />}>
+            <Body />
+          </Suspense>
         </main>
       </div>
     );

@@ -1,6 +1,13 @@
-import { useMemo, useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import {
+  Suspense,
+  useMemo,
+  useRef,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react';
 import { Maximize2, Minus, Minimize2, X } from 'lucide-react';
 import { cx } from '../../lib/format';
+import { LoadingState } from '../states';
 import { APP_MAP } from './appRegistry';
 import { useWindows, type WindowState } from './windowManager';
 
@@ -173,7 +180,9 @@ export function AppWindow({ win }: { win: WindowState }) {
       </div>
 
       {/* Body */}
-      <div className="min-h-0 flex-1 overflow-auto bg-zinc-950 p-4">{body}</div>
+      <div className="min-h-0 flex-1 overflow-auto bg-zinc-950 p-4">
+        <Suspense fallback={<LoadingState label="Loading…" />}>{body}</Suspense>
+      </div>
 
       {/* Resize handles (hidden when maximized) */}
       {!win.maximized && (

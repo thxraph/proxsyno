@@ -1,4 +1,4 @@
-import { useMemo, type ComponentType } from 'react';
+import { lazy, useMemo, type ComponentType } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Building2,
@@ -18,19 +18,35 @@ import {
 } from 'lucide-react';
 import { api } from '../../api/client';
 import type { ProxmoxAvailable } from '../../lib/types';
-import { Dashboard } from '../../pages/Dashboard';
-import { Storage } from '../../pages/Storage';
-import { Shares } from '../../pages/Shares';
-import { Users } from '../../pages/Users';
-import { Files } from '../../pages/Files';
-import { Virtualization } from '../../pages/Virtualization';
-import { NodeApp } from '../../pages/node/NodeApp';
-import { DatacenterApp } from '../../pages/datacenter/DatacenterApp';
-import { DockerApp } from '../../pages/docker/DockerApp';
-import { DownloadStation } from '../../pages/downloads/DownloadStation';
-import { Photos } from '../../pages/photos/Photos';
-import { NoteStation } from '../../pages/notes/NoteStation';
-import { Surveillance } from '../../pages/surveillance/Surveillance';
+
+// App bodies are lazy-loaded so each page splits into its own chunk, keeping the
+// initial bundle small. Every render site (AppWindow, MobileShell) wraps these in
+// a <Suspense>. Named exports are adapted to the default-export shape lazy() wants.
+const Dashboard = lazy(() => import('../../pages/Dashboard').then((m) => ({ default: m.Dashboard })));
+const Storage = lazy(() => import('../../pages/Storage').then((m) => ({ default: m.Storage })));
+const Shares = lazy(() => import('../../pages/Shares').then((m) => ({ default: m.Shares })));
+const Users = lazy(() => import('../../pages/Users').then((m) => ({ default: m.Users })));
+const Files = lazy(() => import('../../pages/Files').then((m) => ({ default: m.Files })));
+const Virtualization = lazy(() =>
+  import('../../pages/Virtualization').then((m) => ({ default: m.Virtualization })),
+);
+const NodeApp = lazy(() => import('../../pages/node/NodeApp').then((m) => ({ default: m.NodeApp })));
+const DatacenterApp = lazy(() =>
+  import('../../pages/datacenter/DatacenterApp').then((m) => ({ default: m.DatacenterApp })),
+);
+const DockerApp = lazy(() =>
+  import('../../pages/docker/DockerApp').then((m) => ({ default: m.DockerApp })),
+);
+const DownloadStation = lazy(() =>
+  import('../../pages/downloads/DownloadStation').then((m) => ({ default: m.DownloadStation })),
+);
+const Photos = lazy(() => import('../../pages/photos/Photos').then((m) => ({ default: m.Photos })));
+const NoteStation = lazy(() =>
+  import('../../pages/notes/NoteStation').then((m) => ({ default: m.NoteStation })),
+);
+const Surveillance = lazy(() =>
+  import('../../pages/surveillance/Surveillance').then((m) => ({ default: m.Surveillance })),
+);
 
 export interface AppDef {
   key: string;
