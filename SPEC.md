@@ -80,9 +80,18 @@ Base path `/api`. All responses JSON. Errors: `{ "error": { "code": string, "mes
 with appropriate HTTP status. Auth via cookie `proxsyno_session`.
 
 ### Auth
-- `POST /api/auth/login` `{username, password}` → `200 {user:{name,groups,isAdmin}}` + sets cookie. `401` on bad creds, `403` if not in admin group.
+- `POST /api/auth/login` `{username, password}` → `200 {user:{name,groups,isAdmin}}` + sets cookie. `401` on bad creds (generic message — never reveals whether the user exists), `403` if authenticated but not in admin group, `429` when rate-limited.
 - `POST /api/auth/logout` → `204`, clears cookie.
 - `GET  /api/auth/me` → `200 {user}` or `401`.
+
+**Hardening (all enforced server-side):**
+- **JWT**: HS256 pinned (no `none`/alg-downgrade), issuer checked, payload shape validated. Secret from env, **≥32 chars required in production**.
+- **Cookie**: httpOnly + SameSite=Strict + Path=/; `Secure` when `COOKIE_SECURE=true`, and then named with the **`__Host-`** prefix (host-pinned).
+- **Brute-force guard**: login locks out after 5 failures (per client IP *and* per username) for 15 min → `429` + `Retry-After`. In-memory; a valid login resets the counters.
+- **CSRF**: SameSite=Strict cookie + an Origin/Referer check that rejects cross-origin state-changing requests (`POST/PUT/PATCH/DELETE`) and cross-origin WebSocket upgrades. Absent Origin (non-browser clients) is allowed.
+- **Security headers** on every response: `X-Frame-Options: DENY` + CSP `frame-ancestors 'none'` (clickjacking), `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Permissions-Policy` (camera/mic/geo off), and HSTS once `COOKIE_SECURE` is on.
+- **Username** validated to a Unix-name charset (blocks option-injection into `id`/`getent`).
+- Known trade-off: JWTs are stateless, so logout clears the cookie but a *stolen* token stays valid until expiry (default 12h). httpOnly + SameSite=Strict prevent theft; lower `SESSION_TTL_SEC` to shrink the window. **Put the app behind TLS and set `COOKIE_SECURE=true`** for the full guarantee (Secure cookie + `__Host-` + HSTS).
 
 ### System / health
 - `GET /api/health` → `{status:"ok",version}` (no auth).

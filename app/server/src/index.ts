@@ -41,6 +41,7 @@ import {
   type VncProxy,
 } from "./services/pveconsole.js";
 import { errorHandler, notFoundHandler } from "./util/errors.js";
+import { securityHeaders, verifyOrigin, isSameOrigin } from "./util/security.js";
 
 // ---------------------------------------------------------------------------
 // Express app
@@ -53,6 +54,9 @@ const app = express();
 app.set("trust proxy", config.isProd ? 1 : false);
 app.disable("x-powered-by");
 
+// Defensive response headers on every response (SPA, static assets, and API).
+app.use(securityHeaders);
+
 // Body parsers with conservative limits (file uploads bypass these via multer).
 app.use(express.json({ limit: "256kb" }));
 app.use(express.urlencoded({ extended: false, limit: "256kb" }));
@@ -60,6 +64,9 @@ app.use(cookieParser());
 
 // --- Public routes (no auth) ---
 const api = express.Router();
+// CSRF backstop: reject cross-origin state-changing requests (covers /auth/login
+// too). Complements the SameSite=Strict session cookie.
+api.use(verifyOrigin);
 api.get("/health", (_req, res) => {
   res.json({ status: "ok", version: config.version });
 });
@@ -167,6 +174,14 @@ server.on("upgrade", (req, socket, head) => {
   const isConsole = pathname === "/ws/proxmox/console";
   const isPveConsole = pathname === "/ws/pve/console";
   if (!isSystem && !isConsole && !isPveConsole) {
+    socket.destroy();
+    return;
+  }
+
+  // Reject cross-origin WebSocket handshakes (cross-site WS hijacking) before
+  // we even look at the cookie.
+  if (!isSameOrigin(req.headers.origin, req.headers.referer, req.headers.host)) {
+    socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
     socket.destroy();
     return;
   }
