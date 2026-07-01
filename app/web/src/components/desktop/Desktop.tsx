@@ -1,15 +1,19 @@
 import { Navigate } from 'react-router-dom';
 import type { User } from '../../lib/types';
 import { useMe } from '../../hooks/useAuth';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { LoadingState } from '../states';
 import { useApps, type AppDef } from './appRegistry';
 import { AppWindow } from './AppWindow';
+import { MobileShell } from './MobileShell';
 import { Taskbar } from './Taskbar';
 import { WindowProvider, useWindows } from './windowManager';
 
 // The single authenticated surface. Everything that isn't /login renders here.
+// Phones get a full-screen launcher shell; larger screens get the window manager.
 export function Desktop() {
   const { data: me, isLoading } = useMe();
+  const isMobile = useIsMobile();
 
   if (isLoading) {
     return (
@@ -19,6 +23,8 @@ export function Desktop() {
     );
   }
   if (!me) return <Navigate to="/login" replace />;
+
+  if (isMobile) return <MobileShell me={me} />;
 
   return (
     <WindowProvider>
