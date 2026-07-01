@@ -38,6 +38,13 @@ export function GuestConsole({ guest }: { guest: Guest }) {
 
     let disposed = false;
     let rfb: RFB | null = null;
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    const clearTimer = () => {
+      if (timeout) {
+        clearTimeout(timeout);
+        timeout = null;
+      }
+    };
 
     // Two-step handshake: mint the proxy over REST (returns the VNC password and
     // a one-time token), then let noVNC open the WebSocket itself with that token
@@ -79,24 +86,40 @@ export function GuestConsole({ guest }: { guest: Guest }) {
       rfb.background = '#000000';
 
       rfb.addEventListener('connect', () => {
+        clearTimer();
         if (!disposed) setStatus('connected');
       });
       rfb.addEventListener('disconnect', (e: CustomEvent) => {
+        clearTimer();
         if (disposed) return;
         const clean = (e.detail as { clean?: boolean } | undefined)?.clean;
         setStatus('disconnected');
         if (!clean) setErrorMsg('Connection lost');
       });
       rfb.addEventListener('securityfailure', (e: CustomEvent) => {
+        clearTimer();
         if (disposed) return;
         const reason = (e.detail as { reason?: string } | undefined)?.reason;
         setStatus('error');
         setErrorMsg(reason ? `Authentication failed: ${reason}` : 'Authentication failed');
       });
+
+      // Surface a stuck handshake instead of showing "Connecting…" forever.
+      timeout = setTimeout(() => {
+        if (disposed) return;
+        setStatus('error');
+        setErrorMsg('Timed out connecting to the console (no response from the server).');
+        try {
+          rfb?.disconnect();
+        } catch {
+          /* already gone */
+        }
+      }, 20_000);
     })();
 
     return () => {
       disposed = true;
+      clearTimer();
       if (rfb) {
         try {
           rfb.disconnect();
