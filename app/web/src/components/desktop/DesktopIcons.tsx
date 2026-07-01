@@ -1,4 +1,12 @@
-import { useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { api } from '../../api/client';
 import { cx } from '../../lib/format';
 import type { AppDef } from './appRegistry';
 import { useWindows } from './windowManager';
@@ -9,7 +17,6 @@ const CELL_W = 88;
 const CELL_H = 96;
 const ORIGIN = 16;
 const DRAG_THRESHOLD = 5; // px of movement before a press becomes a drag (vs a click)
-const STORAGE_KEY = 'proxsyno.desktop.icons';
 
 interface Pos {
   x: number;
@@ -17,30 +24,9 @@ interface Pos {
 }
 type PosMap = Record<string, Pos>;
 
-function loadSaved(): PosMap {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    const parsed = raw ? (JSON.parse(raw) as unknown) : null;
-    if (!parsed || typeof parsed !== 'object') return {};
-    const out: PosMap = {};
-    for (const [key, v] of Object.entries(parsed as Record<string, unknown>)) {
-      if (v && typeof v === 'object') {
-        const { x, y } = v as Record<string, unknown>;
-        if (typeof x === 'number' && typeof y === 'number') out[key] = { x, y };
-      }
-    }
-    return out;
-  } catch {
-    return {};
-  }
-}
-
-function persist(map: PosMap): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
-  } catch {
-    /* storage unavailable — positions just won't survive reload */
-  }
+// Server-persisted, per-user preferences. Only the icon layout is used here.
+interface Prefs {
+  'desktop-icons'?: PosMap;
 }
 
 // Default auto-flow slot for an icon: fill a column top-to-bottom, then wrap.
@@ -70,8 +56,34 @@ export function DesktopIcons({ apps }: { apps: AppDef[] }) {
   const { open } = useWindows();
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
-  const [positions, setPositions] = useState<PosMap>(() => loadSaved());
+  const [positions, setPositions] = useState<PosMap>({});
   const [dragKey, setDragKey] = useState<string | null>(null);
+
+  // positionsRef mirrors `positions` synchronously so a drag can compute the
+  // full next map (to persist) without waiting for a state flush.
+  const positionsRef = useRef<PosMap>({});
+  const setPos = (next: PosMap) => {
+    positionsRef.current = next;
+    setPositions(next);
+  };
+
+  // Load saved layout from the server (per-user) and hydrate once.
+  const prefsQ = useQuery({
+    queryKey: ['prefs'],
+    queryFn: () => api.get<Prefs>('/prefs'),
+    staleTime: Infinity,
+  });
+  const hydrated = useRef(false);
+  useEffect(() => {
+    if (hydrated.current || !prefsQ.data) return;
+    hydrated.current = true;
+    const saved = prefsQ.data['desktop-icons'];
+    if (saved) setPos(saved);
+  }, [prefsQ.data]);
+
+  const saveMut = useMutation({
+    mutationFn: (next: PosMap) => api.put('/prefs/desktop-icons', next),
+  });
 
   const drag = useRef<{
     key: string;
@@ -122,7 +134,7 @@ export function DesktopIcons({ apps }: { apps: AppDef[] }) {
       d.moved = true;
       setDragKey(d.key);
     }
-    setPositions((prev) => ({ ...prev, [d.key]: { x: d.baseX + dx, y: d.baseY + dy } }));
+    setPos({ ...positionsRef.current, [d.key]: { x: d.baseX + dx, y: d.baseY + dy } });
   };
 
   const onPointerUp = (e: ReactPointerEvent<HTMLButtonElement>) => {
@@ -137,13 +149,11 @@ export function DesktopIcons({ apps }: { apps: AppDef[] }) {
     if (!d.moved) return; // a plain click; onClick will open the app
     justDragged.current = true;
     setDragKey(null);
-    setPositions((prev) => {
-      const p = prev[d.key];
-      if (!p) return prev;
-      const next = { ...prev, [d.key]: snap(p, size.w, size.h) };
-      persist(next);
-      return next;
-    });
+    const p = positionsRef.current[d.key];
+    if (!p) return;
+    const next = { ...positionsRef.current, [d.key]: snap(p, size.w, size.h) };
+    setPos(next);
+    saveMut.mutate(next); // persist the whole layout server-side (per-user)
   };
 
   return (

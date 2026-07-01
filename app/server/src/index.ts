@@ -27,6 +27,7 @@ import { downloadsRouter } from "./routes/downloads.js";
 import { photosRouter } from "./routes/photos.js";
 import { notesRouter } from "./routes/notes.js";
 import { surveillanceRouter } from "./routes/surveillance.js";
+import { prefsRouter } from "./routes/prefs.js";
 import { SystemSampler } from "./services/system.js";
 import {
   isScriptInCatalog,
@@ -88,6 +89,7 @@ api.use("/downloads", downloadsRouter);
 api.use("/photos", photosRouter);
 api.use("/notes", notesRouter);
 api.use("/surveillance", surveillanceRouter);
+api.use("/prefs", prefsRouter);
 
 // Unknown /api/* path → JSON 404 (before the SPA fallback).
 api.use(notFoundHandler);
