@@ -185,12 +185,6 @@ server.on("upgrade", (req, socket, head) => {
   // Reject cross-origin WebSocket handshakes (cross-site WS hijacking) before
   // we even look at the cookie.
   if (!isSameOrigin(req.headers.origin, req.headers.referer, req.headers.host)) {
-    if (isPveConsole) {
-      // eslint-disable-next-line no-console
-      console.log(
-        `[proxsyno][console] upgrade REJECTED cross-origin: origin=${req.headers.origin} host=${req.headers.host}`,
-      );
-    }
     socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
     socket.destroy();
     return;
@@ -201,19 +195,9 @@ server.on("upgrade", (req, socket, head) => {
   const token = cookies[config.cookieName];
   const user = token ? verifySession(token) : null;
   if (!user) {
-    if (isPveConsole) {
-      // eslint-disable-next-line no-console
-      console.log(
-        `[proxsyno][console] upgrade REJECTED auth: cookie present=${!!token}, valid=${!!user}`,
-      );
-    }
     socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
     socket.destroy();
     return;
-  }
-  if (isPveConsole) {
-    // eslint-disable-next-line no-console
-    console.log(`[proxsyno][console] upgrade OK user=${user.name} url=${req.url}`);
   }
 
   const target = isHostShell
@@ -366,7 +350,7 @@ hostShellWss.on("connection", (ws: WebSocket) => {
 });
 
 // ---------------------------------------------------------------------------
-// Proxmox guest VNC console — ticket control frame, then a raw binary RFB pipe.
+// Proxmox guest VNC console — one-time token swap, then a raw binary RFB pipe.
 // ---------------------------------------------------------------------------
 
 pveConsoleWss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
@@ -377,12 +361,6 @@ pveConsoleWss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
   const url = new URL(req.url ?? "", "http://localhost");
   const token = url.searchParams.get("token") ?? "";
   const proxy = consumeProxy(token);
-  // eslint-disable-next-line no-console
-  console.log(
-    `[proxsyno][console] ws connection token=${token.slice(0, 8)}… proxy=${
-      proxy ? `FOUND port ${proxy.port}` : "NOT FOUND (expired/invalid/reused)"
-    }`,
-  );
   if (!proxy) {
     ws.close(1008, "invalid or expired console token");
     return;

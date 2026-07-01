@@ -90,10 +90,11 @@ async function mintPveAuth(): Promise<{ ticket: string; csrf: string }> {
   return { ticket, csrf };
 }
 
-/** POST an empty body to a local pveproxy API path; resolves the `data` field. */
+/** POST a form body to a local pveproxy API path; resolves the `data` field. */
 function pveApiPost(
   apiPath: string,
   auth: { ticket: string; csrf: string },
+  body = "",
 ): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     const req = https.request(
@@ -106,7 +107,8 @@ function pveApiPost(
         headers: {
           Cookie: `PVEAuthCookie=${auth.ticket}`,
           CSRFPreventionToken: auth.csrf,
-          "Content-Length": "0",
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Content-Length": String(Buffer.byteLength(body)),
         },
       },
       (res) => {
@@ -129,7 +131,7 @@ function pveApiPost(
     );
     req.on("error", reject);
     req.setTimeout(30_000, () => req.destroy(new Error("pve api request timed out")));
-    req.end();
+    req.end(body);
   });
 }
 
@@ -139,7 +141,17 @@ export async function createVncProxy(params: ConsoleParams): Promise<VncProxy> {
   // node/type/vmid are already validated by parseConsoleParams, so this path is
   // safe to interpolate (no shell, and the values match strict patterns).
   const auth = await mintPveAuth();
-  const data = await pveApiPost(`/api2/json/nodes/${node}/${type}/${vmid}/vncproxy`, auth);
+  // `websocket=1` is essential: without it, vncterm negotiates VeNCrypt
+  // (security type 19, subtype X509Plain) which requires an inner TLS session
+  // the browser noVNC cannot establish over a plain WebSocket — it aborts right
+  // after the RFB version exchange ("connection lost"). With websocket=1 (the
+  // same flag the Proxmox UI uses) vncterm offers plain VNC Auth (type 2) with
+  // the ticket as the VNC password, which noVNC handles.
+  const data = await pveApiPost(
+    `/api2/json/nodes/${node}/${type}/${vmid}/vncproxy`,
+    auth,
+    "websocket=1",
+  );
 
   const port = Number(data.port);
   // The VNC password the client sends as RFB credentials. qemu returns a
@@ -221,10 +233,12 @@ export function bridgeToVnc(ws: WebSocket, proxy: VncProxy): void {
 
   // browser (noVNC) -> VNC server.
   ws.on("message", (data: Buffer | ArrayBuffer | Buffer[]) => {
-    if (tcp.destroyed) return;
-    if (Buffer.isBuffer(data)) tcp.write(data);
-    else if (Array.isArray(data)) tcp.write(Buffer.concat(data));
-    else tcp.write(Buffer.from(data));
+    const chunk = Buffer.isBuffer(data)
+      ? data
+      : Array.isArray(data)
+        ? Buffer.concat(data)
+        : Buffer.from(data);
+    if (!tcp.destroyed) tcp.write(chunk);
   });
   ws.on("close", cleanup);
   ws.on("error", cleanup);

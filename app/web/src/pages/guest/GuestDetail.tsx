@@ -31,13 +31,13 @@ import { GuestBackupTab } from './GuestBackupTab';
 import { GuestTasksTab } from './GuestTasksTab';
 import { GuestConsole } from './GuestConsole';
 
-type TabId = 'summary' | 'hardware' | 'options' | 'snapshots' | 'backup' | 'tasks' | 'console';
+export type TabId = 'summary' | 'hardware' | 'options' | 'snapshots' | 'backup' | 'tasks' | 'console';
 
 const CONFIRM_ACTIONS: GuestAction[] = ['stop', 'reboot', 'shutdown'];
 
-export function GuestDetail({ guest }: { guest: Guest }) {
+export function GuestDetail({ guest, initialTab = 'summary' }: { guest: Guest; initialTab?: TabId }) {
   const isQemu = guest.type === 'qemu';
-  const [tab, setTab] = useState<TabId>('summary');
+  const [tab, setTab] = useState<TabId>(initialTab);
 
   const tabs: { id: TabId; label: string; icon: typeof Gauge }[] = [
     { id: 'summary', label: 'Summary', icon: Gauge },

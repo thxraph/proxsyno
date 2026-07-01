@@ -40,7 +40,7 @@ import { ProgressBar } from '../components/ProgressBar';
 const Terminal = lazy(() =>
   import('../components/Terminal').then((m) => ({ default: m.Terminal })),
 );
-import { GuestDetail } from './guest/GuestDetail';
+import { GuestDetail, type TabId } from './guest/GuestDetail';
 import { Toggle } from './Shares';
 
 const GUESTS_REFETCH_MS = 5000;
@@ -139,9 +139,16 @@ function GuestsView({
 
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState<Guest | null>(null);
+  const [selectedTab, setSelectedTab] = useState<TabId>('summary');
   const [pendingAction, setPendingAction] = useState<{ guest: Guest; action: GuestAction } | null>(
     null,
   );
+
+  // Open a guest's detail view, optionally jumping straight to a tab (e.g. Console).
+  const openGuest = (guest: Guest, tab: TabId = 'summary') => {
+    setSelectedTab(tab);
+    setSelected(guest);
+  };
 
   const actionMut = useMutation({
     mutationFn: ({ guest, action }: { guest: Guest; action: GuestAction }) =>
@@ -173,7 +180,7 @@ function GuestsView({
             </button>
           }
         />
-        <GuestDetail guest={selected} />
+        <GuestDetail key={`${selected.type}-${selected.vmid}`} guest={selected} initialTab={selectedTab} />
       </div>
     );
   }
@@ -253,8 +260,13 @@ function GuestsView({
         <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
           <IconAction
             title="Manage"
-            onClick={() => setSelected(g)}
+            onClick={() => openGuest(g)}
             icon={Settings2}
+          />
+          <IconAction
+            title="Console"
+            onClick={() => openGuest(g, 'console')}
+            icon={TerminalIcon}
           />
           <GuestActions guest={g} onAction={runAction} busy={actionMut.isPending} />
         </div>
@@ -288,7 +300,7 @@ function GuestsView({
           columns={columns}
           rows={guestsQ.data ?? []}
           rowKey={(g) => `${g.type}-${g.vmid}`}
-          onRowClick={(g) => setSelected(g)}
+          onRowClick={(g) => openGuest(g)}
           emptyMessage="No VMs or containers yet. Create one to get started."
         />
       )}
