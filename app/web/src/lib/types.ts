@@ -415,6 +415,26 @@ export type ConsoleServerMessage =
   | { type: 'exit'; code: number }
   | { type: 'error'; message: string };
 
+// ---- Notifications ----
+export type Severity = 'info' | 'warning' | 'critical';
+export interface Notification {
+  id: string;
+  ts: number;
+  severity: Severity;
+  source: string;
+  title: string;
+  message: string;
+}
+export interface NotificationSettings {
+  minSeverity: Severity;
+  thresholds: { diskPct: number; tempC: number };
+  sinks: {
+    ntfy: { enabled: boolean; url: string; topic: string };
+    webhook: { enabled: boolean; url: string };
+    telegram: { enabled: boolean; botToken: string; chatId: string };
+  };
+}
+
 // ---- Error envelope ----
 export interface ApiErrorBody {
   error: {

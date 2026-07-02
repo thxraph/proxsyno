@@ -112,6 +112,15 @@ with appropriate HTTP status. Auth via cookie `proxsyno_session`.
 - `POST /api/storage/selftest/:disk/start` body `{type:"short"|"long"}` → begins a self-test now (`smartctl -t`). 409 if one is already running. → 204.
 - `POST /api/storage/selftest/:disk/cancel` → aborts a running self-test (`smartctl -X`). → 204.
 
+### Notifications
+- `GET  /api/notifications` → `{items:[{id, ts, severity:"info"|"warning"|"critical", source, title, message}], unreadCount}` — newest-first event log (ring, last 200) from the health evaluator.
+- `POST /api/notifications/read` → `204`, marks all as read (advances the read marker).
+- `GET  /api/notifications/settings` → `{minSeverity:"info"|"warning"|"critical", thresholds:{diskPct, tempC}, sinks:{ntfy:{enabled,url,topic}, webhook:{enabled,url}, telegram:{enabled,botToken,chatId}}}`.
+- `PUT  /api/notifications/settings` (same shape) → saves to `/etc/proxsyno/notifications.json`.
+- `POST /api/notifications/test` → `{results:[{sink, ok, error?}]}`, sends a test to every enabled sink.
+
+A server-side evaluator runs every `NOTIFY_INTERVAL_SEC` (default 300s) and edge-triggers alerts on: RAID degraded, scrub mismatches, SMART self-test failure / health-not-PASSED / over-temperature, filesystem or ZFS pool usage over threshold, ZFS pool not ONLINE. Each condition fires ONCE when it appears and logs a resolution when it clears; events at/above `minSeverity` are dispatched to the configured sinks (ntfy / webhook / Telegram, all HTTP POST). SSRF note: sink URLs are admin-configured by design.
+
 ### Shares
 - `GET    /api/shares` → `{smb:[{name, path, comment?, readOnly, guestOk, validUsers:string[], managed:boolean}], nfs:[{path, clients:[{host, options}]}]}`. Lists ALL smb.conf share sections (minus Samba's special `global`/`homes`/`printers`/`print$`); `managed:false` marks hand-authored shares outside proxsyno's markers (surfaced read-only — the UI hides edit/delete). `POST`/`PUT` refuse to shadow an unmanaged section of the same name (409).
 - `POST   /api/shares/smb` `{name, path, comment?, readOnly?, guestOk?, validUsers?:string[]}` → `201 {share}`. Writes a managed block in `/etc/samba/smb.conf` and reloads smbd.

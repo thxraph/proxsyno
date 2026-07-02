@@ -103,6 +103,11 @@ export const config = {
   nfsExportsPath: envStr("NFS_EXPORTS", "/etc/exports"),
   scrubStatePath: envStr("SCRUB_STATE", "/etc/proxsyno/scrub.json"),
   selftestStatePath: envStr("SELFTEST_STATE", "/etc/proxsyno/selftests.json"),
+  notificationsSettingsPath: envStr("NOTIFY_SETTINGS", "/etc/proxsyno/notifications.json"),
+  notificationsStatePath: envStr("NOTIFY_STATE", "/etc/proxsyno/notifications-state.json"),
+  // How often the health evaluator runs (seconds). Kept modest so SMART reads
+  // don't wake spun-down drives too often.
+  notifyIntervalSec: envInt("NOTIFY_INTERVAL_SEC", 300),
 
   // Base URL of the Frigate NVR (LXC 100). Proxied by /api/surveillance/*; the
   // browser never talks to Frigate directly. Defaults to loopback — override

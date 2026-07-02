@@ -29,6 +29,8 @@ import { photosRouter } from "./routes/photos.js";
 import { notesRouter } from "./routes/notes.js";
 import { surveillanceRouter } from "./routes/surveillance.js";
 import { prefsRouter } from "./routes/prefs.js";
+import { notificationsRouter } from "./routes/notifications.js";
+import { startNotificationEvaluator } from "./services/notifications.js";
 import { consoleRouter } from "./routes/console.js";
 import { SystemSampler } from "./services/system.js";
 import {
@@ -88,6 +90,7 @@ api.use("/photos", photosRouter);
 api.use("/notes", notesRouter);
 api.use("/surveillance", surveillanceRouter);
 api.use("/prefs", prefsRouter);
+api.use("/notifications", notificationsRouter);
 api.use("/console", consoleRouter);
 
 // Unknown /api/* path → JSON 404 (before the SPA fallback).
@@ -391,6 +394,9 @@ pveConsoleWss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
 // Boot
 // ---------------------------------------------------------------------------
 
+// Periodic health evaluator feeding the notification center.
+const stopNotifications = startNotificationEvaluator();
+
 const scheme = config.tlsEnabled ? "https" : "http";
 server.listen(config.port, config.host, () => {
   // eslint-disable-next-line no-console
@@ -418,6 +424,7 @@ for (const sig of ["SIGTERM", "SIGINT"] as const) {
   process.on(sig, () => {
     // eslint-disable-next-line no-console
     console.log(`[proxsyno] ${sig} received, shutting down`);
+    stopNotifications();
     wss.clients.forEach((c) => c.close());
     consoleWss.clients.forEach((c) => c.close());
     pveConsoleWss.clients.forEach((c) => c.close());
