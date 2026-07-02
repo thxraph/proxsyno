@@ -47,10 +47,20 @@ if (isProd && jwtSecret.length < 32) {
   throw new Error("PROXSYNO_JWT_SECRET must be at least 32 characters in production.");
 }
 
-// HTTPS-only session cookie. The MVP serves plain HTTP, so this defaults OFF — a
-// Secure cookie is silently dropped by browsers over http:// and login would
-// appear to fail. Set COOKIE_SECURE=true once behind a TLS reverse proxy.
-const cookieSecure = envBool("COOKIE_SECURE", false);
+// Built-in TLS. When enabled the server listens HTTPS on `port` using the
+// configured cert/key (the installer can generate a self-signed pair). Off by
+// default so an existing plain-HTTP deployment is never silently changed.
+const tlsEnabled = envBool("TLS_ENABLED", false);
+const tlsCertPath = envStr("TLS_CERT", "/etc/proxsyno/tls/cert.pem");
+const tlsKeyPath = envStr("TLS_KEY", "/etc/proxsyno/tls/key.pem");
+// Optional plain-HTTP listener that 301-redirects to HTTPS (0 = disabled).
+const httpRedirectPort = envInt("HTTP_REDIRECT_PORT", 0);
+
+// HTTPS-only session cookie. Auto-on when TLS is enabled — a Secure cookie is
+// silently dropped by browsers over http:// so login would appear to fail.
+// Overridable: set COOKIE_SECURE=true explicitly when behind a TLS reverse proxy
+// (TLS terminated upstream, so this process still speaks HTTP).
+const cookieSecure = envBool("COOKIE_SECURE", tlsEnabled);
 // Over TLS, use the `__Host-` prefix: browsers only accept it when it's Secure,
 // Path=/, and has no Domain — pinning the cookie to this exact host and blocking
 // subdomain/cross-host injection. Over plain HTTP the prefix isn't allowed, so
@@ -66,6 +76,11 @@ export const config = {
 
   host: envStr("HOST", "0.0.0.0"),
   port: envInt("PORT", 8800),
+
+  tlsEnabled,
+  tlsCertPath,
+  tlsKeyPath,
+  httpRedirectPort,
 
   jwtSecret,
   sessionTtlSec: envInt("SESSION_TTL_SEC", 12 * 60 * 60),

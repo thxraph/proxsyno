@@ -5,8 +5,9 @@
 import "dotenv/config";
 
 import http from "node:http";
+import https from "node:https";
 import path from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import express from "express";
 import cookieParser from "cookie-parser";
 import { WebSocketServer, type WebSocket } from "ws";
@@ -113,7 +114,14 @@ app.use(errorHandler);
 // HTTP + WebSocket server
 // ---------------------------------------------------------------------------
 
-const server = http.createServer(app);
+// HTTPS when TLS is enabled (cert/key read once at boot), else plain HTTP.
+// WebSocket upgrades, listen, and shutdown all work identically on either.
+const server: http.Server = config.tlsEnabled
+  ? https.createServer(
+      { cert: readFileSync(config.tlsCertPath), key: readFileSync(config.tlsKeyPath) },
+      app,
+    )
+  : http.createServer(app);
 
 // noServer mode lets us authenticate the cookie during the upgrade handshake
 // before accepting the socket, mirroring the HTTP auth middleware.
@@ -383,13 +391,27 @@ pveConsoleWss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
 // Boot
 // ---------------------------------------------------------------------------
 
+const scheme = config.tlsEnabled ? "https" : "http";
 server.listen(config.port, config.host, () => {
   // eslint-disable-next-line no-console
   console.log(
-    `[proxsyno] server listening on http://${config.host}:${config.port} ` +
-      `(env=${config.nodeEnv}, filesRoot=${config.filesRoot}, adminGroup=${config.adminGroup})`,
+    `[proxsyno] server listening on ${scheme}://${config.host}:${config.port} ` +
+      `(env=${config.nodeEnv}, tls=${config.tlsEnabled}, filesRoot=${config.filesRoot}, adminGroup=${config.adminGroup})`,
   );
 });
+
+// Optional plain-HTTP listener that 301-redirects to HTTPS, so old http:// links
+// keep working after TLS is turned on. Only runs when TLS is enabled.
+if (config.tlsEnabled && config.httpRedirectPort > 0) {
+  http
+    .createServer((req, res) => {
+      const hostname = (req.headers.host ?? config.host).split(":")[0];
+      const portSuffix = config.port === 443 ? "" : `:${config.port}`;
+      res.writeHead(301, { Location: `https://${hostname}${portSuffix}${req.url ?? "/"}` });
+      res.end();
+    })
+    .listen(config.httpRedirectPort, config.host);
+}
 
 // Graceful shutdown for systemd (SIGTERM) and Ctrl-C (SIGINT).
 for (const sig of ["SIGTERM", "SIGINT"] as const) {

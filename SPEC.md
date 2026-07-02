@@ -91,7 +91,7 @@ with appropriate HTTP status. Auth via cookie `proxsyno_session`.
 - **CSRF**: SameSite=Strict cookie + an Origin/Referer check that rejects cross-origin state-changing requests (`POST/PUT/PATCH/DELETE`) and cross-origin WebSocket upgrades. Absent Origin (non-browser clients) is allowed.
 - **Security headers** on every response: `X-Frame-Options: DENY` + CSP `frame-ancestors 'none'` (clickjacking), `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Permissions-Policy` (camera/mic/geo off), and HSTS once `COOKIE_SECURE` is on.
 - **Username** validated to a Unix-name charset (blocks option-injection into `id`/`getent`).
-- Known trade-off: JWTs are stateless, so logout clears the cookie but a *stolen* token stays valid until expiry (default 12h). httpOnly + SameSite=Strict prevent theft; lower `SESSION_TTL_SEC` to shrink the window. **Put the app behind TLS and set `COOKIE_SECURE=true`** for the full guarantee (Secure cookie + `__Host-` + HSTS).
+- Known trade-off: JWTs are stateless, so logout clears the cookie but a *stolen* token stays valid until expiry (default 12h). httpOnly + SameSite=Strict prevent theft; lower `SESSION_TTL_SEC` to shrink the window. **Enable TLS** for the full guarantee (Secure cookie + `__Host-` + HSTS): either `TLS_ENABLED=true` with a cert/key (`install-app.sh --tls` generates a self-signed pair and listens HTTPS on `PORT`; `HTTP_REDIRECT_PORT` optionally 301s old http:// links), or terminate TLS at a reverse proxy and set `COOKIE_SECURE=true`. `COOKIE_SECURE` auto-enables when `TLS_ENABLED` is on.
 
 ### System / health
 - `GET /api/health` → `{status:"ok",version}` (no auth).
