@@ -152,6 +152,10 @@ export interface SmbShare {
   readOnly: boolean;
   guestOk: boolean;
   validUsers: string[];
+  /** Users/@groups forced read-only even when the share is writable. */
+  readList: string[];
+  /** Deletions go to a `.recycle` bin (vfs_recycle) instead of vanishing. */
+  recycle: boolean;
   /** false for hand-authored shares defined outside proxsyno (read-only in UI). */
   managed: boolean;
 }
@@ -179,6 +183,8 @@ export interface SmbShareInput {
   readOnly?: boolean;
   guestOk?: boolean;
   validUsers?: string[];
+  readList?: string[];
+  recycle?: boolean;
 }
 
 export interface NfsExportInput {

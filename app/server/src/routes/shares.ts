@@ -18,6 +18,11 @@ import { nameSchema, pathSchema } from "../util/validate.js";
 
 export const sharesRouter = Router();
 
+// A Samba principal is a user name or an `@group` reference.
+const principalSchema = z
+  .string()
+  .regex(/^@?[a-zA-Z0-9_][a-zA-Z0-9_-]{0,31}$/, "invalid user or @group");
+
 const smbBodySchema = z.object({
   name: nameSchema,
   path: pathSchema,
@@ -28,7 +33,9 @@ const smbBodySchema = z.object({
     .optional(),
   readOnly: z.boolean().optional(),
   guestOk: z.boolean().optional(),
-  validUsers: z.array(nameSchema).max(256).optional(),
+  validUsers: z.array(principalSchema).max(256).optional(),
+  readList: z.array(principalSchema).max(256).optional(),
+  recycle: z.boolean().optional(),
 });
 
 // Body for PUT does not include the name (taken from the URL param).
@@ -54,6 +61,8 @@ function toSmbShare(name: string, body: z.infer<typeof smbUpdateSchema>): SmbSha
     readOnly: body.readOnly ?? false,
     guestOk: body.guestOk ?? false,
     validUsers: body.validUsers ?? [],
+    readList: body.readList ?? [],
+    recycle: body.recycle ?? false,
     managed: true, // anything written through this path lives inside our markers
   };
 }

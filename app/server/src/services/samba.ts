@@ -31,6 +31,10 @@ export interface SmbShare {
   readOnly: boolean;
   guestOk: boolean;
   validUsers: string[];
+  /** Users/groups forced to read-only even when the share is writable (`read list`). */
+  readList: string[];
+  /** When true, deletions go to a `.recycle` bin via vfs_recycle instead of vanishing. */
+  recycle: boolean;
   /** true if inside proxsyno markers (editable); false for hand-authored shares. */
   managed: boolean;
 }
@@ -69,6 +73,19 @@ export function renderSmbBlock(s: SmbShare): string {
   lines.push("   browseable = yes");
   if (s.validUsers.length > 0) {
     lines.push(`   valid users = ${s.validUsers.join(", ")}`);
+  }
+  if (s.readList.length > 0) {
+    lines.push(`   read list = ${s.readList.join(", ")}`);
+  }
+  if (s.recycle) {
+    // vfs_recycle: deleted files move to <share>/.recycle, keeping the tree and
+    // versioned copies so the Files-app recycle browser can restore them.
+    lines.push("   vfs objects = recycle");
+    lines.push("   recycle:repository = .recycle");
+    lines.push("   recycle:keeptree = yes");
+    lines.push("   recycle:versions = yes");
+    lines.push("   recycle:touch = no");
+    lines.push("   recycle:exclude_dir = .recycle");
   }
   lines.push(MARK_END(s.name));
   return lines.join("\n");
@@ -147,14 +164,18 @@ export async function listSmbShares(): Promise<SmbShare[]> {
     const isWritableKey = getVal("read only") === undefined && (getVal("writable") ?? getVal("writeable")) !== undefined;
     const guestRaw = getVal("guest ok");
     const validUsersRaw = getVal("valid users");
+    const readListRaw = getVal("read list");
+    const vfsRaw = getVal("vfs objects");
+    const splitList = (raw: string | undefined): string[] =>
+      raw ? raw.split(/[,\s]+/).map((u) => u.trim()).filter(Boolean) : [];
     const share: SmbShare = {
       name: h.name,
       path: getVal("path") ?? getVal("directory") ?? "",
       readOnly: readOnlyRaw ? (isWritableKey ? !/^(yes|true|1)$/i.test(readOnlyRaw) : /^(yes|true|1)$/i.test(readOnlyRaw)) : false,
       guestOk: guestRaw ? /^(yes|true|1)$/i.test(guestRaw) : false,
-      validUsers: validUsersRaw
-        ? validUsersRaw.split(/[,\s]+/).map((u) => u.trim()).filter(Boolean)
-        : [],
+      validUsers: splitList(validUsersRaw),
+      readList: splitList(readListRaw),
+      recycle: vfsRaw ? /\brecycle\b/i.test(vfsRaw) : false,
       managed: inManagedRange(h.headerIdx),
     };
     const comment = getVal("comment");

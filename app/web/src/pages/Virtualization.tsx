@@ -430,11 +430,7 @@ function CreateWizard({
       ) : optionsQ.isError ? (
         <ErrorState error={optionsQ.error} onRetry={() => optionsQ.refetch()} />
       ) : optionsQ.data ? (
-        tab === 'vm' ? (
-          <VmForm options={optionsQ.data} onClose={onClose} />
-        ) : (
-          <LxcForm options={optionsQ.data} onClose={onClose} />
-        )
+        <GuestForm key={tab} kind={tab} options={optionsQ.data} onClose={onClose} />
       ) : null}
     </Modal>
   );
@@ -473,180 +469,145 @@ function storagesFor(options: ProxmoxOptions, content: string) {
   return options.storages.filter((s) => s.content.includes(content));
 }
 
-/* --------------------------------- VM form -------------------------------- */
+const HOSTNAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9-]{0,62}$/;
 
-function VmForm({ options, onClose }: { options: ProxmoxOptions; onClose: () => void }) {
-  const qc = useQueryClient();
-  const imageStorages = useMemo(() => storagesFor(options, 'images'), [options]);
-
-  const [name, setName] = useState('');
-  const [cores, setCores] = useState('1');
-  const [memoryMB, setMemoryMB] = useState('2048');
-  const [diskGB, setDiskGB] = useState('32');
-  const [storage, setStorage] = useState(imageStorages[0]?.name ?? '');
-  const [isoVolid, setIsoVolid] = useState('');
-  const [bridge, setBridge] = useState(options.bridges[0]?.name ?? '');
-  const [ostype, setOstype] = useState('');
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [submitError, setSubmitError] = useState<string | null>(null);
-
-  const mut = useMutation({
-    mutationFn: (payload: VmCreateInput) => api.post<{ vmid: number }>('/proxmox/vm', payload),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['proxmox', 'guests'] });
-      onClose();
-    },
-    onError: (e) => setSubmitError(errMsg(e, 'Failed to create VM')),
-  });
-
-  const validate = (): boolean => {
-    const next: Record<string, string> = {};
-    if (!name.trim()) next.name = 'A name is required.';
-    if (!(Number(cores) >= 1)) next.cores = 'At least 1 core.';
-    if (!(Number(memoryMB) >= 16)) next.memoryMB = 'At least 16 MB.';
-    if (!(Number(diskGB) >= 1)) next.diskGB = 'At least 1 GB.';
-    if (!storage) next.storage = 'Select a storage.';
-    if (!bridge) next.bridge = 'Select a bridge.';
-    setErrors(next);
-    return Object.keys(next).length === 0;
-  };
-
-  const onSubmit = () => {
-    setSubmitError(null);
-    if (!validate()) return;
-    const payload: VmCreateInput = {
-      name: name.trim(),
-      cores: Number(cores),
-      memoryMB: Number(memoryMB),
-      diskGB: Number(diskGB),
-      storage,
-      bridge,
-    };
-    if (isoVolid) payload.isoVolid = isoVolid;
-    if (ostype) payload.ostype = ostype;
-    mut.mutate(payload);
-  };
-
+// Shared cores/RAM/disk row — identical for VMs and containers.
+function ResourceFields({
+  cores,
+  memoryMB,
+  diskGB,
+  setCores,
+  setMemoryMB,
+  setDiskGB,
+  errors,
+}: {
+  cores: string;
+  memoryMB: string;
+  diskGB: string;
+  setCores: (v: string) => void;
+  setMemoryMB: (v: string) => void;
+  setDiskGB: (v: string) => void;
+  errors: Record<string, string>;
+}) {
   return (
-    <div>
-      {submitError && <SubmitError message={submitError} />}
-
-      <FormField label="Name" required error={errors.name}>
-        <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="my-vm" />
+    <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-3">
+      <FormField label="Cores" required error={errors.cores}>
+        <input className="input" type="number" min={1} value={cores} onChange={(e) => setCores(e.target.value)} />
       </FormField>
-
-      <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-3">
-        <FormField label="Cores" required error={errors.cores}>
-          <input className="input" type="number" min={1} value={cores} onChange={(e) => setCores(e.target.value)} />
-        </FormField>
-        <FormField label="RAM (MB)" required error={errors.memoryMB}>
-          <input className="input" type="number" min={16} step={16} value={memoryMB} onChange={(e) => setMemoryMB(e.target.value)} />
-        </FormField>
-        <FormField label="Disk (GB)" required error={errors.diskGB}>
-          <input className="input" type="number" min={1} value={diskGB} onChange={(e) => setDiskGB(e.target.value)} />
-        </FormField>
-      </div>
-
-      <FormField label="Storage" required error={errors.storage} hint="Where the VM disk is created.">
-        <select className="input" value={storage} onChange={(e) => setStorage(e.target.value)}>
-          {imageStorages.length === 0 && <option value="">No image-capable storage</option>}
-          {imageStorages.map((s) => (
-            <option key={s.name} value={s.name}>
-              {s.name} ({formatBytes(s.availBytes)} free)
-            </option>
-          ))}
-        </select>
+      <FormField label="RAM (MB)" required error={errors.memoryMB}>
+        <input className="input" type="number" min={16} step={16} value={memoryMB} onChange={(e) => setMemoryMB(e.target.value)} />
       </FormField>
-
-      <FormField label="Installation ISO" hint="Optional — mounted as a CD-ROM for install.">
-        <select className="input" value={isoVolid} onChange={(e) => setIsoVolid(e.target.value)}>
-          <option value="">No ISO</option>
-          {options.isos.map((iso) => (
-            <option key={iso.volid} value={iso.volid}>
-              {iso.volid} ({formatBytes(iso.sizeBytes)})
-            </option>
-          ))}
-        </select>
+      <FormField label="Disk (GB)" required error={errors.diskGB}>
+        <input className="input" type="number" min={1} value={diskGB} onChange={(e) => setDiskGB(e.target.value)} />
       </FormField>
-
-      <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
-        <FormField label="Network bridge" required error={errors.bridge}>
-          <select className="input" value={bridge} onChange={(e) => setBridge(e.target.value)}>
-            {options.bridges.length === 0 && <option value="">No bridges</option>}
-            {options.bridges.map((b) => (
-              <option key={b.name} value={b.name}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </FormField>
-        <FormField label="OS type" hint="Optional.">
-          <select className="input" value={ostype} onChange={(e) => setOstype(e.target.value)}>
-            <option value="">Default</option>
-            {options.osTypes.map((o) => (
-              <option key={o} value={o}>
-                {o}
-              </option>
-            ))}
-          </select>
-        </FormField>
-      </div>
-
-      <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4 dark:border-slate-800">
-        <p className="text-xs text-slate-400">Next VMID: {options.nextId}</p>
-        <div className="flex gap-2">
-          <button className="btn-secondary" onClick={onClose} disabled={mut.isPending}>
-            Cancel
-          </button>
-          <button className="btn-primary" onClick={onSubmit} disabled={mut.isPending}>
-            {mut.isPending ? 'Creating…' : 'Create VM'}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
 
-/* -------------------------------- LXC form -------------------------------- */
-
-const HOSTNAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9-]{0,62}$/;
-
-function LxcForm({ options, onClose }: { options: ProxmoxOptions; onClose: () => void }) {
+// Shared create mutation — same success handling for both kinds, endpoint/message differ.
+function useGuestCreate(
+  kind: 'vm' | 'lxc',
+  onClose: () => void,
+  onError: (msg: string) => void,
+) {
   const qc = useQueryClient();
-  const rootfsStorages = useMemo(() => storagesFor(options, 'rootdir'), [options]);
+  return useMutation({
+    mutationFn: (payload: VmCreateInput | LxcCreateInput) =>
+      api.post<{ vmid: number }>(kind === 'vm' ? '/proxmox/vm' : '/proxmox/lxc', payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['proxmox', 'guests'] });
+      onClose();
+    },
+    onError: (e) =>
+      onError(errMsg(e, kind === 'vm' ? 'Failed to create VM' : 'Failed to create container')),
+  });
+}
 
+/* ------------------------------- guest form ------------------------------- */
+
+function GuestForm({
+  kind,
+  options,
+  onClose,
+}: {
+  kind: 'vm' | 'lxc';
+  options: ProxmoxOptions;
+  onClose: () => void;
+}) {
+  const isVm = kind === 'vm';
+  const storages = useMemo(
+    () => storagesFor(options, isVm ? 'images' : 'rootdir'),
+    [options, isVm],
+  );
+
+  const [name, setName] = useState('');
   const [hostname, setHostname] = useState('');
-  const [templateVolid, setTemplateVolid] = useState(options.templates[0]?.volid ?? '');
   const [cores, setCores] = useState('1');
-  const [memoryMB, setMemoryMB] = useState('512');
-  const [diskGB, setDiskGB] = useState('8');
-  const [storage, setStorage] = useState(rootfsStorages[0]?.name ?? '');
+  const [memoryMB, setMemoryMB] = useState(isVm ? '2048' : '512');
+  const [diskGB, setDiskGB] = useState(isVm ? '32' : '8');
+  const [storage, setStorage] = useState(storages[0]?.name ?? '');
   const [bridge, setBridge] = useState(options.bridges[0]?.name ?? '');
+  // VM-only
+  const [isoVolid, setIsoVolid] = useState('');
+  const [ostype, setOstype] = useState('');
+  // LXC-only
+  const [templateVolid, setTemplateVolid] = useState(options.templates[0]?.volid ?? '');
   const [password, setPassword] = useState('');
   const [unprivileged, setUnprivileged] = useState(true);
   const [startOnCreate, setStartOnCreate] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const mut = useMutation({
-    mutationFn: (payload: LxcCreateInput) => api.post<{ vmid: number }>('/proxmox/lxc', payload),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['proxmox', 'guests'] });
-      onClose();
-    },
-    onError: (e) => setSubmitError(errMsg(e, 'Failed to create container')),
-  });
+  const mut = useGuestCreate(kind, onClose, setSubmitError);
+
+  // Storage/bridge selects are shared markup; only the storage source list and hint differ by kind.
+  const storageField = (
+    <FormField
+      label="Storage"
+      required
+      error={errors.storage}
+      hint={isVm ? 'Where the VM disk is created.' : undefined}
+    >
+      <select className="input" value={storage} onChange={(e) => setStorage(e.target.value)}>
+        {storages.length === 0 && (
+          <option value="">{isVm ? 'No image-capable storage' : 'No rootdir-capable storage'}</option>
+        )}
+        {storages.map((s) => (
+          <option key={s.name} value={s.name}>
+            {s.name} ({formatBytes(s.availBytes)} free)
+          </option>
+        ))}
+      </select>
+    </FormField>
+  );
+
+  const bridgeField = (
+    <FormField label="Network bridge" required error={errors.bridge}>
+      <select className="input" value={bridge} onChange={(e) => setBridge(e.target.value)}>
+        {options.bridges.length === 0 && <option value="">No bridges</option>}
+        {options.bridges.map((b) => (
+          <option key={b.name} value={b.name}>
+            {b.name}
+          </option>
+        ))}
+      </select>
+    </FormField>
+  );
 
   const validate = (): boolean => {
     const next: Record<string, string> = {};
-    if (!HOSTNAME_RE.test(hostname)) next.hostname = 'Letters, digits and dashes; 1–63 chars.';
-    if (!templateVolid) next.templateVolid = 'Select a template.';
+    if (isVm) {
+      if (!name.trim()) next.name = 'A name is required.';
+    } else {
+      if (!HOSTNAME_RE.test(hostname)) next.hostname = 'Letters, digits and dashes; 1–63 chars.';
+      if (!templateVolid) next.templateVolid = 'Select a template.';
+    }
     if (!(Number(cores) >= 1)) next.cores = 'At least 1 core.';
     if (!(Number(memoryMB) >= 16)) next.memoryMB = 'At least 16 MB.';
     if (!(Number(diskGB) >= 1)) next.diskGB = 'At least 1 GB.';
     if (!storage) next.storage = 'Select a storage.';
     if (!bridge) next.bridge = 'Select a bridge.';
-    if (password.length < 5) next.password = 'At least 5 characters.';
+    if (!isVm && password.length < 5) next.password = 'At least 5 characters.';
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -654,89 +615,124 @@ function LxcForm({ options, onClose }: { options: ProxmoxOptions; onClose: () =>
   const onSubmit = () => {
     setSubmitError(null);
     if (!validate()) return;
-    mut.mutate({
-      hostname: hostname.trim(),
-      templateVolid,
-      cores: Number(cores),
-      memoryMB: Number(memoryMB),
-      diskGB: Number(diskGB),
-      storage,
-      bridge,
-      password,
-      unprivileged,
-      startOnCreate,
-    });
+    if (isVm) {
+      const payload: VmCreateInput = {
+        name: name.trim(),
+        cores: Number(cores),
+        memoryMB: Number(memoryMB),
+        diskGB: Number(diskGB),
+        storage,
+        bridge,
+      };
+      if (isoVolid) payload.isoVolid = isoVolid;
+      if (ostype) payload.ostype = ostype;
+      mut.mutate(payload);
+    } else {
+      mut.mutate({
+        hostname: hostname.trim(),
+        templateVolid,
+        cores: Number(cores),
+        memoryMB: Number(memoryMB),
+        diskGB: Number(diskGB),
+        storage,
+        bridge,
+        password,
+        unprivileged,
+        startOnCreate,
+      });
+    }
   };
 
   return (
     <div>
       {submitError && <SubmitError message={submitError} />}
 
-      <FormField label="Hostname" required error={errors.hostname}>
-        <input className="input" value={hostname} onChange={(e) => setHostname(e.target.value)} placeholder="my-container" />
-      </FormField>
-
-      <FormField label="Template" required error={errors.templateVolid} hint="OS template (downloaded via pveam).">
-        <select className="input" value={templateVolid} onChange={(e) => setTemplateVolid(e.target.value)}>
-          {options.templates.length === 0 && <option value="">No templates available</option>}
-          {options.templates.map((t) => (
-            <option key={t.volid} value={t.volid}>
-              {t.name}
-            </option>
-          ))}
-        </select>
-      </FormField>
-
-      <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-3">
-        <FormField label="Cores" required error={errors.cores}>
-          <input className="input" type="number" min={1} value={cores} onChange={(e) => setCores(e.target.value)} />
+      {isVm ? (
+        <FormField label="Name" required error={errors.name}>
+          <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="my-vm" />
         </FormField>
-        <FormField label="RAM (MB)" required error={errors.memoryMB}>
-          <input className="input" type="number" min={16} step={16} value={memoryMB} onChange={(e) => setMemoryMB(e.target.value)} />
-        </FormField>
-        <FormField label="Disk (GB)" required error={errors.diskGB}>
-          <input className="input" type="number" min={1} value={diskGB} onChange={(e) => setDiskGB(e.target.value)} />
-        </FormField>
-      </div>
+      ) : (
+        <>
+          <FormField label="Hostname" required error={errors.hostname}>
+            <input className="input" value={hostname} onChange={(e) => setHostname(e.target.value)} placeholder="my-container" />
+          </FormField>
 
-      <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
-        <FormField label="Storage" required error={errors.storage}>
-          <select className="input" value={storage} onChange={(e) => setStorage(e.target.value)}>
-            {rootfsStorages.length === 0 && <option value="">No rootdir-capable storage</option>}
-            {rootfsStorages.map((s) => (
-              <option key={s.name} value={s.name}>
-                {s.name} ({formatBytes(s.availBytes)} free)
-              </option>
-            ))}
-          </select>
-        </FormField>
-        <FormField label="Network bridge" required error={errors.bridge}>
-          <select className="input" value={bridge} onChange={(e) => setBridge(e.target.value)}>
-            {options.bridges.length === 0 && <option value="">No bridges</option>}
-            {options.bridges.map((b) => (
-              <option key={b.name} value={b.name}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </FormField>
-      </div>
+          <FormField label="Template" required error={errors.templateVolid} hint="OS template (downloaded via pveam).">
+            <select className="input" value={templateVolid} onChange={(e) => setTemplateVolid(e.target.value)}>
+              {options.templates.length === 0 && <option value="">No templates available</option>}
+              {options.templates.map((t) => (
+                <option key={t.volid} value={t.volid}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </FormField>
+        </>
+      )}
 
-      <FormField label="Root password" required error={errors.password} hint="Used for the container root account.">
-        <input
-          className="input"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          autoComplete="new-password"
-          placeholder="••••••••"
-        />
-      </FormField>
+      <ResourceFields
+        cores={cores}
+        memoryMB={memoryMB}
+        diskGB={diskGB}
+        setCores={setCores}
+        setMemoryMB={setMemoryMB}
+        setDiskGB={setDiskGB}
+        errors={errors}
+      />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:gap-6">
-        <Toggle label="Unprivileged container" checked={unprivileged} onChange={setUnprivileged} />
-        <Toggle label="Start after create" checked={startOnCreate} onChange={setStartOnCreate} />
-      </div>
+      {isVm ? (
+        <>
+          {storageField}
+
+          <FormField label="Installation ISO" hint="Optional — mounted as a CD-ROM for install.">
+            <select className="input" value={isoVolid} onChange={(e) => setIsoVolid(e.target.value)}>
+              <option value="">No ISO</option>
+              {options.isos.map((iso) => (
+                <option key={iso.volid} value={iso.volid}>
+                  {iso.volid} ({formatBytes(iso.sizeBytes)})
+                </option>
+              ))}
+            </select>
+          </FormField>
+
+          <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
+            {bridgeField}
+            <FormField label="OS type" hint="Optional.">
+              <select className="input" value={ostype} onChange={(e) => setOstype(e.target.value)}>
+                <option value="">Default</option>
+                {options.osTypes.map((o) => (
+                  <option key={o} value={o}>
+                    {o}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
+            {storageField}
+            {bridgeField}
+          </div>
+
+          <FormField label="Root password" required error={errors.password} hint="Used for the container root account.">
+            <input
+              className="input"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="new-password"
+              placeholder="••••••••"
+            />
+          </FormField>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:gap-6">
+            <Toggle label="Unprivileged container" checked={unprivileged} onChange={setUnprivileged} />
+            <Toggle label="Start after create" checked={startOnCreate} onChange={setStartOnCreate} />
+          </div>
+        </>
+      )}
 
       <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4 dark:border-slate-800">
         <p className="text-xs text-slate-400">Next VMID: {options.nextId}</p>
@@ -745,7 +741,7 @@ function LxcForm({ options, onClose }: { options: ProxmoxOptions; onClose: () =>
             Cancel
           </button>
           <button className="btn-primary" onClick={onSubmit} disabled={mut.isPending}>
-            {mut.isPending ? 'Creating…' : 'Create container'}
+            {mut.isPending ? 'Creating…' : isVm ? 'Create VM' : 'Create container'}
           </button>
         </div>
       </div>

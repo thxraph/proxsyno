@@ -15,6 +15,8 @@ describe("renderSmbBlock", () => {
       readOnly: false,
       guestOk: true,
       validUsers: ["alice", "bob"],
+      readList: [],
+      recycle: false,
       managed: true,
     };
     const out = renderSmbBlock(share);
@@ -34,11 +36,34 @@ describe("renderSmbBlock", () => {
       readOnly: true,
       guestOk: false,
       validUsers: [],
+      readList: [],
+      recycle: false,
       managed: true,
     };
     const out = renderSmbBlock(share);
     expect(out).toContain("[public]");
     expect(out).not.toContain("valid users");
+    expect(out).not.toContain("read list");
+    expect(out).not.toContain("vfs objects");
+  });
+
+  it("renders a read list and a vfs_recycle block when set", () => {
+    const share: SmbShare = {
+      name: "docs",
+      path: "/mnt/docs",
+      readOnly: false,
+      guestOk: false,
+      validUsers: ["alice", "@staff"],
+      readList: ["bob", "@interns"],
+      recycle: true,
+      managed: true,
+    };
+    const out = renderSmbBlock(share);
+    expect(out).toContain("valid users = alice, @staff");
+    expect(out).toContain("read list = bob, @interns");
+    expect(out).toContain("vfs objects = recycle");
+    expect(out).toContain("recycle:repository = .recycle");
+    expect(out).toContain("recycle:keeptree = yes");
   });
 });
 
@@ -55,6 +80,8 @@ describe("hasUnmanagedSection", () => {
       readOnly: false,
       guestOk: false,
       validUsers: [],
+      readList: [],
+      recycle: false,
       managed: true,
     });
     expect(hasUnmanagedSection(content, "media")).toBe(false);
@@ -90,6 +117,8 @@ describe("listSmbShares (via SMB_CONF fixture)", () => {
       readOnly: false,
       guestOk: true,
       validUsers: [],
+      readList: [],
+      recycle: true,
       managed: true,
     });
 
@@ -107,6 +136,7 @@ describe("listSmbShares (via SMB_CONF fixture)", () => {
       "   path = /mnt/raid",
       "   comment = RAID array",
       "   valid users = alice",
+      "   read list = bob, @interns",
       "   read only = no",
       "",
       managedMedia,
@@ -139,6 +169,10 @@ describe("listSmbShares (via SMB_CONF fixture)", () => {
     expect(media.managed).toBe(true);
     expect(raid.path).toBe("/mnt/raid");
     expect(raid.validUsers).toEqual(["alice"]);
+    expect(raid.readList).toEqual(["bob", "@interns"]);
+    expect(raid.recycle).toBe(false);
+    // The managed media block was rendered with recycle enabled.
+    expect(media.recycle).toBe(true);
   });
 
   it("treats 'writable = yes' as the inverse of read only (readOnly === false)", async () => {

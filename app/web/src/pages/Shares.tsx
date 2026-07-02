@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Lock, Network, Pencil, Plus, Server, Trash2 } from 'lucide-react';
 import { api, errMsg } from '../api/client';
 import type {
+  Group,
+  NasUser,
   NfsExport,
   NfsExportInput,
   SharesResponse,
@@ -219,9 +221,16 @@ function SmbFormModal({ share, onClose }: { share: SmbShare | null; onClose: () 
   const [comment, setComment] = useState(share?.comment ?? '');
   const [readOnly, setReadOnly] = useState(share?.readOnly ?? false);
   const [guestOk, setGuestOk] = useState(share?.guestOk ?? false);
-  const [validUsers, setValidUsers] = useState((share?.validUsers ?? []).join(', '));
+  const [recycle, setRecycle] = useState(share?.recycle ?? false);
+  const [validUsers, setValidUsers] = useState<string[]>(share?.validUsers ?? []);
+  const [readList, setReadList] = useState<string[]>(share?.readList ?? []);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const usersQ = useQuery({ queryKey: ['users'], queryFn: () => api.get<NasUser[]>('/users') });
+  const groupsQ = useQuery({ queryKey: ['groups'], queryFn: () => api.get<Group[]>('/groups') });
+  const userNames = (usersQ.data ?? []).map((u) => u.name);
+  const groupNames = (groupsQ.data ?? []).map((g) => g.name);
 
   const mut = useMutation({
     mutationFn: (payload: SmbShareInput) =>
@@ -247,18 +256,17 @@ function SmbFormModal({ share, onClose }: { share: SmbShare | null; onClose: () 
   const onSubmit = () => {
     setSubmitError(null);
     if (!validate()) return;
-    const users = validUsers
-      .split(',')
-      .map((u) => u.trim())
-      .filter(Boolean);
-    mut.mutate({
+    const payload: SmbShareInput = {
       name: name.trim(),
       path: path.trim(),
       comment: comment.trim() || undefined,
       readOnly,
       guestOk,
-      validUsers: users,
-    });
+      validUsers,
+      readList,
+      recycle,
+    };
+    mut.mutate(payload);
   };
 
   return (
@@ -307,23 +315,109 @@ function SmbFormModal({ share, onClose }: { share: SmbShare | null; onClose: () 
         />
       </FormField>
 
-      <FormField
-        label="Valid users"
-        hint="Comma-separated usernames. Leave empty to allow everyone."
-      >
-        <input
-          className="input"
+      <FormField label="Valid users" hint="Who may connect. Leave empty to allow everyone.">
+        <PrincipalPicker
+          users={userNames}
+          groups={groupNames}
           value={validUsers}
-          onChange={(e) => setValidUsers(e.target.value)}
-          placeholder="alice, bob"
+          onChange={setValidUsers}
+        />
+      </FormField>
+
+      <FormField
+        label="Read-only users"
+        hint="Forced read-only even when the share is writable."
+      >
+        <PrincipalPicker
+          users={userNames}
+          groups={groupNames}
+          value={readList}
+          onChange={setReadList}
         />
       </FormField>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:gap-6">
         <Toggle label="Read only" checked={readOnly} onChange={setReadOnly} />
         <Toggle label="Allow guest access" checked={guestOk} onChange={setGuestOk} />
+        <Toggle label="Recycle bin" checked={recycle} onChange={setRecycle} />
       </div>
     </Modal>
+  );
+}
+
+function PrincipalPicker({
+  users,
+  groups,
+  value,
+  onChange,
+}: {
+  users: string[];
+  groups: string[];
+  value: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const toggle = (id: string) =>
+    onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
+
+  // Selected principals not present in the known lists (e.g. from an existing
+  // share referencing a user/group we can't currently enumerate).
+  const knownIds = [...users, ...groups.map((g) => `@${g}`)];
+  const unknown = value.filter((id) => !knownIds.includes(id));
+
+  const chip = (id: string, label: string) => {
+    const active = value.includes(id);
+    return (
+      <button
+        type="button"
+        key={id}
+        onClick={() => toggle(id)}
+        className={cx(
+          'rounded-md px-2 py-1 text-left text-xs transition-colors',
+          active
+            ? 'bg-accent-50 text-accent-700 dark:bg-accent-500/10 dark:text-accent-400'
+            : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800',
+        )}
+      >
+        {label}
+      </button>
+    );
+  };
+
+  return (
+    <div className="max-h-40 space-y-3 overflow-y-auto rounded-lg border border-slate-200 p-2 dark:border-slate-700">
+      <div>
+        <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">Users</p>
+        {users.length === 0 ? (
+          <p className="text-xs text-slate-400">No users available.</p>
+        ) : (
+          <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
+            {users.map((u) => chip(u, u))}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">Groups</p>
+        {groups.length === 0 ? (
+          <p className="text-xs text-slate-400">No groups available.</p>
+        ) : (
+          <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
+            {groups.map((g) => chip(`@${g}`, `@${g}`))}
+          </div>
+        )}
+      </div>
+
+      {unknown.length > 0 && (
+        <div>
+          <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">
+            Other
+          </p>
+          <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
+            {unknown.map((id) => chip(id, id))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

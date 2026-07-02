@@ -13,6 +13,7 @@ import {
   Network,
   Server,
   StickyNote,
+  Trash2,
   Users as UsersIcon,
   type LucideIcon,
 } from 'lucide-react';
@@ -27,6 +28,9 @@ const Storage = lazy(() => import('../../pages/Storage').then((m) => ({ default:
 const Shares = lazy(() => import('../../pages/Shares').then((m) => ({ default: m.Shares })));
 const Users = lazy(() => import('../../pages/Users').then((m) => ({ default: m.Users })));
 const Files = lazy(() => import('../../pages/Files').then((m) => ({ default: m.Files })));
+const RecycleBin = lazy(() =>
+  import('../../pages/RecycleBin').then((m) => ({ default: m.RecycleBin })),
+);
 const Virtualization = lazy(() =>
   import('../../pages/Virtualization').then((m) => ({ default: m.Virtualization })),
 );
@@ -93,6 +97,13 @@ export const APPS: AppDef[] = [
     title: 'Files',
     icon: FolderOpen,
     component: Files,
+    defaultSize: { w: 1000, h: 680 },
+  },
+  {
+    key: 'recycle',
+    title: 'Recycle Bin',
+    icon: Trash2,
+    component: RecycleBin,
     defaultSize: { w: 1000, h: 680 },
   },
   {
