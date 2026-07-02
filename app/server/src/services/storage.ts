@@ -221,6 +221,16 @@ export async function getSmart(diskName: string): Promise<SmartInfo> {
     throw err;
   }
 
+  const info = parseSmart(stdout, device);
+  smartCache.set(device, { at: Date.now(), info });
+  return info;
+}
+
+/**
+ * Parse `smartctl -H -A` output into a SmartInfo. Pure (no I/O) so it can be
+ * unit-tested against captured fixtures.
+ */
+export function parseSmart(stdout: string, device: string): SmartInfo {
   // Overall health line.
   const healthMatch = stdout.match(/SMART overall-health self-assessment test result:\s*(\S+)/i);
   const healthy = healthMatch ? /pass/i.test(healthMatch[1]!) : false;
@@ -247,6 +257,5 @@ export async function getSmart(diskName: string): Promise<SmartInfo> {
   const info: SmartInfo = { device, healthy, raw: stdout };
   if (temperatureC !== undefined) info.temperatureC = temperatureC;
   if (powerOnHours !== undefined) info.powerOnHours = powerOnHours;
-  smartCache.set(device, { at: Date.now(), info });
   return info;
 }

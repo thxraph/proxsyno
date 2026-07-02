@@ -58,7 +58,7 @@ const MARK_END = (name: string): string => `# <<< proxsyno managed: ${name}`;
 // ---------------------------------------------------------------------------
 
 /** Render a single managed block for a share. */
-function renderSmbBlock(s: SmbShare): string {
+export function renderSmbBlock(s: SmbShare): string {
   const lines: string[] = [];
   lines.push(MARK_START(s.name));
   lines.push(`[${s.name}]`);
@@ -165,7 +165,7 @@ export async function listSmbShares(): Promise<SmbShare[]> {
 }
 
 /** True if a `[name]` section exists OUTSIDE any proxsyno-managed block. */
-function hasUnmanagedSection(content: string, name: string): boolean {
+export function hasUnmanagedSection(content: string, name: string): boolean {
   const ranges = managedRanges(content);
   const headerRe = /^[ \t]*\[([^\]]+)\][ \t]*$/gm;
   let hm: RegExpExecArray | null;

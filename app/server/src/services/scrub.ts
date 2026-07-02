@@ -106,7 +106,7 @@ async function readSysfs(array: string, attr: string): Promise<string | undefine
 }
 
 /** sync_completed is "<done> / <total>" sectors, or "none" when idle. */
-function parseProgress(syncCompleted: string | undefined): number | undefined {
+export function parseProgress(syncCompleted: string | undefined): number | undefined {
   if (!syncCompleted) return undefined;
   const m = syncCompleted.match(/^(\d+)\s*\/\s*(\d+)$/);
   if (!m) return undefined;
@@ -196,7 +196,7 @@ export async function getScrubStatus(): Promise<ScrubStatus[]> {
 // ---------------------------------------------------------------------------
 
 /** systemd OnCalendar expression for a schedule, or null when disabled. */
-function renderOnCalendar(s: ScrubSchedule): string | null {
+export function renderOnCalendar(s: ScrubSchedule): string | null {
   const time = `${String(s.hour).padStart(2, "0")}:${String(s.minute).padStart(2, "0")}:00`;
   if (s.frequency === "weekly") return `${WEEKDAY_NAMES[s.weekday]} *-*-* ${time}`;
   if (s.frequency === "monthly") return `*-*-${String(s.day).padStart(2, "0")} ${time}`;

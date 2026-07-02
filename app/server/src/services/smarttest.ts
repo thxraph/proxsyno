@@ -109,7 +109,7 @@ async function assertKnownDisk(disk: string): Promise<void> {
  *   # 1  Short offline       Completed without error       00%      6161         -
  * with the description and status separated by runs of 2+ spaces.
  */
-function parseSelftestLog(stdout: string): SmartTestResult[] {
+export function parseSelftestLog(stdout: string): SmartTestResult[] {
   const rows: SmartTestResult[] = [];
   const re = /^#\s*(\d+)\s+(.+?)\s{2,}(.+?)\s{2,}\d+%\s+(\d+)\b/gm;
   let m: RegExpExecArray | null;
@@ -127,15 +127,17 @@ function parseSelftestLog(stdout: string): SmartTestResult[] {
 }
 
 /** Execution status → percent remaining while a test runs, else undefined. */
-function parseRunning(stdout: string): number | undefined {
+export function parseRunning(stdout: string): number | undefined {
+  // NVMe: "Self-test status: ... in progress (NN% completed)". Check this first —
+  // its text also contains "self-test in progress", which would match the ATA
+  // branch below and mask the completed-percentage.
+  const nvme = stdout.match(/self-test.*in progress\s*\((\d+)%\s*complete/i);
+  if (nvme) return 100 - Number.parseInt(nvme[1]!, 10);
   // ATA: "Self-test routine in progress..." + "90% of test remaining."
   if (/self-test routine in progress/i.test(stdout) || /self-test in progress/i.test(stdout)) {
     const rem = stdout.match(/(\d+)%\s+of\s+test\s+remaining/i);
     return rem ? Number.parseInt(rem[1]!, 10) : 0;
   }
-  // NVMe: "Self-test status: ... in progress (NN% completed)"
-  const nvme = stdout.match(/self-test.*in progress\s*\((\d+)%\s*complete/i);
-  if (nvme) return 100 - Number.parseInt(nvme[1]!, 10);
   return undefined;
 }
 
@@ -217,7 +219,7 @@ export async function getSelfTestStatus(): Promise<SmartTestStatus[]> {
 // Public: scheduling
 // ---------------------------------------------------------------------------
 
-function renderOnCalendar(s: SmartTestSchedule): string | null {
+export function renderOnCalendar(s: SmartTestSchedule): string | null {
   const time = `${String(s.hour).padStart(2, "0")}:${String(s.minute).padStart(2, "0")}:00`;
   if (s.frequency === "weekly") return `${WEEKDAY_NAMES[s.weekday]} *-*-* ${time}`;
   if (s.frequency === "monthly") return `*-*-${String(s.day).padStart(2, "0")} ${time}`;
